@@ -24,6 +24,7 @@ import { startAuditCleanupScheduler } from "./workers/audit-cleanup.scheduler";
 import { WebhookService } from "./services/webhook";
 import { startLogStream, stopLogStream } from "./services/logs";
 import { isRateLimited } from "./lib/redis";
+import { checkEnv } from "./lib/env-check";
 
 const PORT = parseInt(process.env.API_PORT || "3001", 10);
 const webhookService = new WebhookService();
@@ -44,6 +45,9 @@ function clientIp(req: { headers: Record<string, any>; ip: string }): string {
 }
 
 async function main() {
+  // Fail fast on weak/placeholder secrets (prod) or warn (dev)
+  checkEnv();
+
   // Create HTTP server first, then attach Fastify + Socket.IO
   const httpServer = createServer();
 
