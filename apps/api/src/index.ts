@@ -23,37 +23,25 @@ import { startImageCleanupScheduler } from "./workers/image-cleanup.scheduler";
 import { startAuditCleanupScheduler } from "./workers/audit-cleanup.scheduler";
 import { WebhookService } from "./services/webhook";
 import { startLogStream, stopLogStream } from "./services/logs";
+import { isRateLimited } from "./lib/redis";
 
 const PORT = parseInt(process.env.API_PORT || "3001", 10);
 const webhookService = new WebhookService();
+const IS_PROD = process.env.NODE_ENV === "production";
+// Only honour X-Forwarded-For when explicitly running behind a trusted proxy
+// (e.g. Traefik). Otherwise clients could spoof their IP to evade rate limits.
+const TRUST_PROXY = process.env.TRUST_PROXY === "true";
 
-// Simple in-memory rate limiter
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-
-function isRateLimited(
-  key: string,
-  maxRequests: number,
-  windowMs: number,
-): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(key);
-
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(key, { count: 1, resetAt: now + windowMs });
-    return false;
+/** Resolve the client IP, trusting X-Forwarded-For only behind a known proxy. */
+function clientIp(req: { headers: Record<string, any>; ip: string }): string {
+  if (TRUST_PROXY) {
+    const fwd = (req.headers["x-forwarded-for"] as string)
+      ?.split(",")[0]
+      ?.trim();
+    if (fwd) return fwd;
   }
-
-  entry.count++;
-  return entry.count > maxRequests;
+  return req.ip;
 }
-
-// Clean up expired entries every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of rateLimitMap) {
-    if (now > entry.resetAt) rateLimitMap.delete(key);
-  }
-}, 300_000);
 
 async function main() {
   // Create HTTP server first, then attach Fastify + Socket.IO
@@ -61,6 +49,8 @@ async function main() {
 
   const server = Fastify({
     logger: true,
+    bodyLimit: 1_048_576, // 1 MiB cap on request bodies
+    trustProxy: TRUST_PROXY,
     serverFactory: (handler) => {
       httpServer.on("request", handler);
       return httpServer;
@@ -92,14 +82,25 @@ async function main() {
       "Permissions-Policy",
       "camera=(), microphone=(), geolocation=()",
     );
+    // The API serves JSON only; a strict CSP blocks any accidental HTML/JS
+    // execution from a reflected response.
+    reply.header(
+      "Content-Security-Policy",
+      "default-src 'none'; frame-ancestors 'none'",
+    );
+    // HSTS only in production (would break plain-HTTP local dev)
+    if (IS_PROD) {
+      reply.header(
+        "Strict-Transport-Security",
+        "max-age=31536000; includeSubDomains",
+      );
+    }
     done(null, payload);
   });
 
   // Rate limiting for auth endpoints
-  server.addHook("onRequest", (req, reply, done) => {
-    const ip =
-      (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
-      req.ip;
+  server.addHook("onRequest", async (req, reply) => {
+    const ip = clientIp(req);
 
     // CSRF protection: tRPC mutations must use POST, never GET.
     // This prevents cross-site request forgery via <img> or <script> tags.
@@ -122,7 +123,7 @@ async function main() {
 
     // Global rate limit: 200 requests/min per IP for all API routes
     if (req.url.startsWith("/trpc/") || req.url.startsWith("/api/")) {
-      if (isRateLimited(`global:${ip}`, 200, 60_000)) {
+      if (await isRateLimited(`global:${ip}`, 200, 60_000)) {
         reply
           .status(429)
           .send({ error: "Too many requests. Please slow down." });
@@ -135,7 +136,7 @@ async function main() {
       req.url.startsWith("/trpc/auth.login") ||
       req.url.startsWith("/trpc/auth.register")
     ) {
-      if (isRateLimited(`auth:${ip}`, 10, 60_000)) {
+      if (await isRateLimited(`auth:${ip}`, 10, 60_000)) {
         reply
           .status(429)
           .send({ error: "Too many attempts. Try again later." });
@@ -145,13 +146,11 @@ async function main() {
 
     // Webhook limit: 30 requests/min per IP
     if (req.url.startsWith("/api/webhooks")) {
-      if (isRateLimited(`webhook:${ip}`, 30, 60_000)) {
+      if (await isRateLimited(`webhook:${ip}`, 30, 60_000)) {
         reply.status(429).send({ error: "Too many webhook requests." });
         return;
       }
     }
-
-    done();
   });
 
   // tRPC
