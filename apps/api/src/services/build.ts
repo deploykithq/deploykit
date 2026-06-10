@@ -108,7 +108,21 @@ export class BuildService {
   ): Promise<void> {
     let buildContext = contextPath;
     let resolvedDockerfilePath = dockerfilePath;
+
+    // Prevent path traversal: the Dockerfile must resolve to a path inside
+    // the build context. An absolute path or "../" escapes would otherwise
+    // let a deploy read/write arbitrary files on the build host.
+    if (path.isAbsolute(dockerfilePath)) {
+      throw new Error("Dockerfile path must be relative to the build context");
+    }
     const fullDockerfilePath = path.resolve(contextPath, dockerfilePath);
+    const normalizedContext = path.resolve(contextPath);
+    if (
+      fullDockerfilePath !== normalizedContext &&
+      !fullDockerfilePath.startsWith(normalizedContext + path.sep)
+    ) {
+      throw new Error("Dockerfile path escapes the build context");
+    }
 
     // Auto-generate Dockerfile if missing
     if (!existsSync(fullDockerfilePath)) {
