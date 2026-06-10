@@ -36,7 +36,7 @@ export const AuditLogPage: React.FC = memo(function AuditLogPage() {
       resourceType: filters.resourceType || undefined,
       action: filters.action || undefined,
     },
-    { keepPreviousData: true },
+    { placeholderData: (prev) => prev },
   );
 
   return (

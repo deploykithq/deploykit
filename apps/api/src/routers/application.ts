@@ -53,11 +53,15 @@ export const applicationRouter = router({
         envVars = decryptEnvVars(app.envVars);
       }
 
+      // Never ship secret material (even encrypted) to the client
+      const { sourceToken: _st, webhookSecret: _ws, ...safeApp } = app;
+
       return {
-        ...app,
+        ...safeApp,
         envVars,
         canViewEnv,
         hasSourceToken: !!app.sourceToken,
+        hasWebhookSecret: !!app.webhookSecret,
         projectRole,
       };
     }),
@@ -109,6 +113,7 @@ export const applicationRouter = router({
         port: z.number().int().min(1).max(65535).optional(),
         serverId: z.string().uuid().nullable().optional(),
         sourceToken: z.string().max(500).nullable().optional(),
+        webhookSecret: z.string().min(16).max(200).nullable().optional(),
         rootDirectory: z.string().max(255).nullable().optional(),
         volumes: z.array(z.string().max(500)).max(20).nullable().optional(),
         // Health check
@@ -130,14 +135,24 @@ export const applicationRouter = router({
           code: "FORBIDDEN",
           message: "Operator access required for this project",
         });
-      const { id, sourceToken, rootDirectory, startCommand, volumes, ...data } =
-        input;
+      const {
+        id,
+        sourceToken,
+        webhookSecret,
+        rootDirectory,
+        startCommand,
+        volumes,
+        ...data
+      } = input;
       const [app] = await ctx.db
         .update(applications)
         .set({
           ...data,
           ...(sourceToken !== undefined && {
             sourceToken: sourceToken ? encrypt(sourceToken) : null,
+          }),
+          ...(webhookSecret !== undefined && {
+            webhookSecret: webhookSecret ? encrypt(webhookSecret) : null,
           }),
           ...(rootDirectory !== undefined && {
             rootDirectory: rootDirectory || null,

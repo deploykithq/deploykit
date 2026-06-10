@@ -3,6 +3,7 @@ import { eq, and } from "drizzle-orm";
 import { db } from "../db/index";
 import { applications, deployments, domains } from "../db/schema/index";
 import { deployQueue } from "../lib/redis";
+import { decrypt } from "../lib/encryption";
 import { getDockerForServer } from "./docker-factory";
 
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || "";
@@ -12,7 +13,24 @@ interface WebhookResult {
   applicationId?: string;
   deploymentId?: string;
   message: string;
+  /** Signals the route should answer 401 instead of 200 */
+  unauthorized?: boolean;
 }
+
+/** Per-app auth context for the generic webhook endpoint. */
+interface GenericAuth {
+  token: string | undefined;
+  /** Whether the token already matched the global WEBHOOK_SECRET */
+  globalOk: boolean;
+}
+
+const tokenMatches = (token: string, secret: string): boolean => {
+  try {
+    return timingSafeEqual(Buffer.from(token), Buffer.from(secret));
+  } catch {
+    return false;
+  }
+};
 
 export class WebhookService {
   verifyGitHubSignature(
@@ -219,7 +237,10 @@ export class WebhookService {
     };
   }
 
-  async handleGeneric(payload: any): Promise<WebhookResult> {
+  async handleGeneric(
+    payload: any,
+    token: string | undefined,
+  ): Promise<WebhookResult> {
     const ref = payload.ref as string;
     const branch = ref?.replace("refs/heads/", "");
     const repoUrl =
@@ -241,7 +262,13 @@ export class WebhookService {
     const commitMessage =
       payload.head_commit?.message || payload.commits?.[0]?.message || "";
 
-    return this.triggerDeploy(repoUrl, branch, commitHash, commitMessage);
+    const globalOk =
+      !!token && !!WEBHOOK_SECRET && tokenMatches(token, WEBHOOK_SECRET);
+
+    return this.triggerDeploy(repoUrl, branch, commitHash, commitMessage, {
+      token,
+      globalOk,
+    });
   }
 
   private async triggerDeploy(
@@ -249,6 +276,7 @@ export class WebhookService {
     branch: string,
     commitHash: string,
     commitMessage: string,
+    auth?: GenericAuth,
   ): Promise<WebhookResult> {
     const normalizedUrl = this.normalizeUrl(repoUrl);
 
@@ -260,10 +288,35 @@ export class WebhookService {
       ),
     });
 
-    const matchingApps = allApps.filter((app) => {
+    let matchingApps = allApps.filter((app) => {
       if (!app.repositoryUrl) return false;
       return this.normalizeUrl(app.repositoryUrl) === normalizedUrl;
     });
+
+    // Generic endpoint: every deploy must be authorized either by the app's
+    // own webhook secret or by the global WEBHOOK_SECRET
+    if (auth) {
+      matchingApps = matchingApps.filter((app) => {
+        if (app.webhookSecret) {
+          if (!auth.token) return false;
+          try {
+            return tokenMatches(auth.token, decrypt(app.webhookSecret));
+          } catch {
+            return false;
+          }
+        }
+        return auth.globalOk;
+      });
+      // Without a valid global token, never reveal whether the repo/branch
+      // matched anything — callers could enumerate configured apps otherwise
+      if (matchingApps.length === 0 && !auth.globalOk) {
+        return {
+          triggered: false,
+          unauthorized: true,
+          message: "Invalid or missing webhook token",
+        };
+      }
+    }
 
     if (matchingApps.length === 0) {
       return {

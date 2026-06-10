@@ -214,7 +214,14 @@ async function main() {
 
   server.post("/api/webhooks/generic", async (req, reply) => {
     try {
-      const result = await webhookService.handleGeneric(req.body);
+      // Authorized via the app's own webhook secret or the global
+      // WEBHOOK_SECRET — never open to anonymous callers
+      const token = req.headers["x-webhook-token"] as string | undefined;
+      const result = await webhookService.handleGeneric(req.body, token);
+      if (result.unauthorized) {
+        reply.status(401).send({ error: result.message });
+        return;
+      }
       server.log.info(`[webhook/generic] ${result.message}`);
       reply.send(result);
     } catch (err: any) {
