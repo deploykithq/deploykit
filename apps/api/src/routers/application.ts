@@ -42,6 +42,11 @@ export const applicationRouter = router({
         });
 
       const projectRole = await getProjectRole(ctx.user, app.projectId);
+      if (!projectRole)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Application not found",
+        });
       let envVars: Record<string, string> = {};
       const canViewEnv = canViewSecrets(projectRole);
       if (app.envVars && canViewEnv) {

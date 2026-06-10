@@ -67,26 +67,13 @@ async function main() {
     },
   });
 
-  // Socket.IO (attach before Fastify starts)
-  const io = initSocket(httpServer);
-
-  io.on("connection", (socket) => {
-    socket.on("subscribe:logs", async (containerId: string) => {
-      socket.join(`logs:${containerId}`);
-      try {
-        await startLogStream(containerId);
-      } catch {
-        // Container might not exist
-      }
-    });
-
-    socket.on("unsubscribe:logs", (containerId: string) => {
-      socket.leave(`logs:${containerId}`);
-      const room = io.sockets.adapter.rooms.get(`logs:${containerId}`);
-      if (!room || room.size === 0) {
-        stopLogStream(containerId);
-      }
-    });
+  // Socket.IO (attach before Fastify starts). Auth + room authorization
+  // live in lib/socket.ts; log streaming is wired in via hooks.
+  initSocket(httpServer, {
+    onLogsSubscribed: (containerId) => startLogStream(containerId),
+    onLogsUnsubscribed: (containerId, roomEmpty) => {
+      if (roomEmpty) stopLogStream(containerId);
+    },
   });
 
   // Plugins

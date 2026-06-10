@@ -1,9 +1,6 @@
 import type { Socket } from "socket.io";
-import jwt from "jsonwebtoken";
-import { eq } from "drizzle-orm";
-import { db } from "../db/index";
-import { users } from "../db/schema/index";
 import { docker } from "../lib/docker";
+import { verifySocketAuth } from "../lib/socket-auth";
 import type Dockerode from "dockerode";
 
 interface TerminalSession {
@@ -18,25 +15,6 @@ const sessions = new Map<string, TerminalSession>();
 
 const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 const ALLOWED_SHELLS = ["/bin/sh", "/bin/bash", "/bin/ash"];
-
-async function verifySocketAuth(
-  token: string,
-): Promise<{ userId: string; role: string } | null> {
-  try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET!, {
-      algorithms: ["HS256"],
-    }) as { userId: string };
-
-    const user = await db.query.users.findFirst({
-      where: eq(users.id, payload.userId),
-    });
-
-    if (!user) return null;
-    return { userId: user.id, role: user.role };
-  } catch {
-    return null;
-  }
-}
 
 async function detectShell(containerId: string): Promise<string> {
   for (const shell of ALLOWED_SHELLS) {
