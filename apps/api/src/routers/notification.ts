@@ -7,6 +7,7 @@ import { notificationChannels, NOTIFICATION_EVENTS } from "../db/schema/index";
 import { sendTestNotification } from "../services/notifier";
 import { logAction } from "../lib/audit";
 import { getProjectRole, canViewSecrets } from "../lib/permissions";
+import { isLiterallyPublicUrl } from "../lib/ssrf";
 import {
   router,
   protectedProcedure,
@@ -54,6 +55,25 @@ const eventEnum = z.enum(
   NOTIFICATION_EVENTS as unknown as [string, ...string[]],
 );
 
+// Config keys that hold an outbound URL — reject obviously-internal targets
+// at validation time (a deeper DNS-resolving check runs again before fetch).
+const URL_CONFIG_KEYS = ["url", "webhookUrl"] as const;
+
+const channelConfigSchema = z
+  .record(z.string(), z.string())
+  .superRefine((config, ctx) => {
+    for (const key of URL_CONFIG_KEYS) {
+      const value = config[key];
+      if (value && !isLiterallyPublicUrl(value)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `${key} must be a public http(s) URL`,
+          path: [key],
+        });
+      }
+    }
+  });
+
 export const notificationRouter = router({
   list: protectedProcedure
     .input(
@@ -93,7 +113,7 @@ export const notificationRouter = router({
         projectId: z.string().uuid().nullable().optional(),
         name: z.string().min(1).max(100),
         type: channelTypeEnum,
-        config: z.record(z.string(), z.string()),
+        config: channelConfigSchema,
         events: z.array(eventEnum).min(1),
         enabled: z.boolean().default(true),
       }),
@@ -128,7 +148,7 @@ export const notificationRouter = router({
       z.object({
         id: z.string().uuid(),
         name: z.string().min(1).max(100).optional(),
-        config: z.record(z.string(), z.string()).optional(),
+        config: channelConfigSchema.optional(),
         events: z.array(eventEnum).min(1).optional(),
         enabled: z.boolean().optional(),
       }),
@@ -200,7 +220,7 @@ export const notificationRouter = router({
     .input(
       z.object({
         type: channelTypeEnum,
-        config: z.record(z.string(), z.string()),
+        config: channelConfigSchema,
       }),
     )
     .mutation(async ({ input }) => {
