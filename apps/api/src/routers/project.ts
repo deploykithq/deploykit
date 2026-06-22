@@ -1,7 +1,13 @@
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
+import { eq, inArray } from "drizzle-orm";
 
-import { projects, applications, databases } from "../db/schema/index";
+import {
+  projects,
+  applications,
+  databases,
+  projectMembers,
+} from "../db/schema/index";
 
 import { DockerService } from "../services/docker";
 import {
@@ -13,11 +19,31 @@ import {
 
 import { createProjectSchema } from "@deploykit/shared";
 import { logAction } from "../lib/audit";
+import {
+  getProjectRole,
+  getAccessibleProjectIds,
+  canView,
+  canOperate,
+} from "../lib/permissions";
 
 const dockerService = new DockerService();
 
 export const projectRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
+    // Global admins see everything; everyone else only their member projects
+    if (ctx.user.role !== "admin") {
+      const accessibleIds = await getAccessibleProjectIds(ctx.user);
+      if (accessibleIds.length === 0) return [];
+      return ctx.db.query.projects.findMany({
+        where: inArray(projects.id, accessibleIds),
+        with: {
+          applications: true,
+          databases: true,
+        },
+        orderBy: (projects, { desc }) => [desc(projects.createdAt)],
+      });
+    }
+
     return ctx.db.query.projects.findMany({
       with: {
         applications: true,
@@ -30,6 +56,11 @@ export const projectRouter = router({
   byId: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      const role = await getProjectRole(ctx.user, input.id);
+      if (!canView(role)) {
+        // NOT_FOUND (not FORBIDDEN) so non-members can't probe which ids exist
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      }
       const project = await ctx.db.query.projects.findFirst({
         where: eq(projects.id, input.id),
         with: {
@@ -39,7 +70,8 @@ export const projectRouter = router({
           databases: true,
         },
       });
-      if (!project) throw new Error("Project not found");
+      if (!project)
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
       return project;
     }),
 
@@ -47,6 +79,15 @@ export const projectRouter = router({
     .input(createProjectSchema)
     .mutation(async ({ ctx, input }) => {
       const [project] = await ctx.db.insert(projects).values(input).returning();
+      // Membership is required for access, so make the creator a project admin
+      // (global admins already have implicit access everywhere)
+      if (ctx.user.role !== "admin") {
+        await ctx.db.insert(projectMembers).values({
+          projectId: project!.id,
+          userId: ctx.user.id,
+          role: "admin",
+        });
+      }
       await logAction(ctx, {
         action: "project.create",
         resourceType: "project",
@@ -65,6 +106,13 @@ export const projectRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const role = await getProjectRole(ctx.user, input.id);
+      if (!canOperate(role)) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Operator access required for this project",
+        });
+      }
       const { id, ...data } = input;
       const [project] = await ctx.db
         .update(projects)

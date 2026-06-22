@@ -41,6 +41,9 @@ export const useAuthStore = create<AuthStateI>((set, get) => ({
     localStorage.setItem("accessToken", accessToken);
     localStorage.setItem("refreshToken", refreshToken);
     set({ user, accessToken, refreshToken });
+    // Re-handshake the socket with the new token (dynamic import avoids
+    // a static auth → socket → trpc → auth module cycle)
+    void import("./socket").then((m) => m.reconnectSocket());
   },
 
   // Clears local state only — used after server-side revocation
@@ -55,6 +58,7 @@ export const useAuthStore = create<AuthStateI>((set, get) => ({
     localStorage.removeItem("accessToken");
     localStorage.removeItem("refreshToken");
     set({ user: null, accessToken: null, refreshToken: null });
+    void import("./socket").then((m) => m.reconnectSocket());
   },
 
   // Authenticated if we have any token — the tRPC client handles proactive refresh

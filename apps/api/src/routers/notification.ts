@@ -1,15 +1,47 @@
 import { z } from "zod";
 import { eq, and, isNull, desc } from "drizzle-orm";
 
+import { TRPCError } from "@trpc/server";
+
 import { notificationChannels, NOTIFICATION_EVENTS } from "../db/schema/index";
 import { sendTestNotification } from "../services/notifier";
 import { logAction } from "../lib/audit";
+import { getProjectRole, canViewSecrets } from "../lib/permissions";
+import { isLiterallyPublicUrl } from "../lib/ssrf";
 import {
   router,
   protectedProcedure,
   operatorProcedure,
   adminProcedure,
 } from "../trpc";
+import type { Context } from "../trpc";
+
+/**
+ * Channel configs may hold secrets (bot tokens, webhook URLs), so reading
+ * them requires operator+ on the owning project, or global operator/admin
+ * for instance-wide channels (projectId = null).
+ */
+const assertCanManageChannels = async (
+  ctx: Context & { user: NonNullable<Context["user"]> },
+  projectId: string | null,
+): Promise<void> => {
+  if (projectId) {
+    const role = await getProjectRole(ctx.user, projectId);
+    if (!canViewSecrets(role)) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Operator access required for this project",
+      });
+    }
+    return;
+  }
+  if (ctx.user.role !== "admin" && ctx.user.role !== "operator") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Operator access required",
+    });
+  }
+};
 
 const channelTypeEnum = z.enum([
   "discord",
@@ -23,6 +55,25 @@ const eventEnum = z.enum(
   NOTIFICATION_EVENTS as unknown as [string, ...string[]],
 );
 
+// Config keys that hold an outbound URL — reject obviously-internal targets
+// at validation time (a deeper DNS-resolving check runs again before fetch).
+const URL_CONFIG_KEYS = ["url", "webhookUrl"] as const;
+
+const channelConfigSchema = z
+  .record(z.string(), z.string())
+  .superRefine((config, ctx) => {
+    for (const key of URL_CONFIG_KEYS) {
+      const value = config[key];
+      if (value && !isLiterallyPublicUrl(value)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `${key} must be a public http(s) URL`,
+          path: [key],
+        });
+      }
+    }
+  });
+
 export const notificationRouter = router({
   list: protectedProcedure
     .input(
@@ -31,6 +82,7 @@ export const notificationRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
+      await assertCanManageChannels(ctx, input.projectId ?? null);
       if (input.projectId) {
         return ctx.db.query.notificationChannels.findMany({
           where: eq(notificationChannels.projectId, input.projectId),
@@ -51,6 +103,7 @@ export const notificationRouter = router({
         where: eq(notificationChannels.id, input.id),
       });
       if (!channel) throw new Error("Notification channel not found");
+      await assertCanManageChannels(ctx, channel.projectId);
       return channel;
     }),
 
@@ -60,12 +113,13 @@ export const notificationRouter = router({
         projectId: z.string().uuid().nullable().optional(),
         name: z.string().min(1).max(100),
         type: channelTypeEnum,
-        config: z.record(z.string(), z.string()),
+        config: channelConfigSchema,
         events: z.array(eventEnum).min(1),
         enabled: z.boolean().default(true),
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      await assertCanManageChannels(ctx, input.projectId ?? null);
       const [channel] = await ctx.db
         .insert(notificationChannels)
         .values({
@@ -94,13 +148,18 @@ export const notificationRouter = router({
       z.object({
         id: z.string().uuid(),
         name: z.string().min(1).max(100).optional(),
-        config: z.record(z.string(), z.string()).optional(),
+        config: channelConfigSchema.optional(),
         events: z.array(eventEnum).min(1).optional(),
         enabled: z.boolean().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
+      const existing = await ctx.db.query.notificationChannels.findFirst({
+        where: eq(notificationChannels.id, id),
+      });
+      if (!existing) throw new Error("Notification channel not found");
+      await assertCanManageChannels(ctx, existing.projectId);
       const [channel] = await ctx.db
         .update(notificationChannels)
         .set({ ...data, updatedAt: new Date() })
@@ -123,6 +182,7 @@ export const notificationRouter = router({
       const channel = await ctx.db.query.notificationChannels.findFirst({
         where: eq(notificationChannels.id, input.id),
       });
+      if (channel) await assertCanManageChannels(ctx, channel.projectId);
 
       await ctx.db
         .delete(notificationChannels)
@@ -145,6 +205,7 @@ export const notificationRouter = router({
         where: eq(notificationChannels.id, input.id),
       });
       if (!channel) throw new Error("Channel not found");
+      await assertCanManageChannels(ctx, channel.projectId);
 
       const [updated] = await ctx.db
         .update(notificationChannels)
@@ -159,7 +220,7 @@ export const notificationRouter = router({
     .input(
       z.object({
         type: channelTypeEnum,
-        config: z.record(z.string(), z.string()),
+        config: channelConfigSchema,
       }),
     )
     .mutation(async ({ input }) => {

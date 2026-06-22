@@ -50,6 +50,23 @@ function redactSecrets(msg: string): string {
   return redacted;
 }
 
+/**
+ * Normalize a user-supplied rootDirectory into a safe relative sub-path.
+ * Rejects absolute paths and any "../" traversal that would escape the repo.
+ */
+function safeRootDirectory(rootDir: string): string {
+  const trimmed = rootDir.replace(/^\/|\/$/g, "");
+  const normalized = path.posix.normalize(trimmed.replace(/\\/g, "/"));
+  if (
+    path.isAbsolute(rootDir) ||
+    normalized.startsWith("..") ||
+    normalized.split("/").includes("..")
+  ) {
+    throw new Error(`Invalid root directory: "${rootDir}"`);
+  }
+  return normalized;
+}
+
 interface DeployJobData {
   deploymentId: string;
   applicationId: string;
@@ -146,7 +163,7 @@ export function startDeployWorker() {
 
           // Resolve context path (monorepo support)
           const remoteContextPath = app.rootDirectory
-            ? `${remoteBuildPath}/${app.rootDirectory.replace(/^\/|\/$/g, "")}`
+            ? `${remoteBuildPath}/${safeRootDirectory(app.rootDirectory)}`
             : remoteBuildPath;
           if (app.rootDirectory) {
             log(`Root directory: ${app.rootDirectory}\n`);
@@ -167,7 +184,10 @@ export function startDeployWorker() {
             imageTag,
             app.dockerfilePath || "Dockerfile",
             log,
-            envVars, // pass as build args so frontends can use them at build time
+            // Only explicit build args — runtime env vars are NOT baked into
+            // the image (they'd leak via `docker inspect`/frontend bundles).
+            // Frontend build-time vars come from the .env file written above.
+            app.buildArgs || {},
           );
 
           // Cleanup build dir
@@ -190,7 +210,7 @@ export function startDeployWorker() {
 
           // Resolve context path (monorepo support)
           const contextPath = app.rootDirectory
-            ? path.join(repoPath, app.rootDirectory.replace(/^\/|\/$/g, ""))
+            ? path.join(repoPath, safeRootDirectory(app.rootDirectory))
             : repoPath;
           if (app.rootDirectory) {
             log(`Root directory: ${app.rootDirectory}\n`);
@@ -211,7 +231,9 @@ export function startDeployWorker() {
             tag: commitHash,
             buildType: app.buildType as BuildType,
             dockerfilePath: app.dockerfilePath || "./Dockerfile",
-            buildArgs: { ...envVars, ...(app.buildArgs || {}) },
+            // Only explicit build args; runtime secrets are not baked into the
+            // image. Frontend build-time vars come from the .env file above.
+            buildArgs: app.buildArgs || {},
             port: app.port || undefined,
             startCommand: app.startCommand || undefined,
             onLog: log,

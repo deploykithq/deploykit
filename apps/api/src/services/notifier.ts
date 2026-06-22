@@ -1,5 +1,6 @@
 import { createHmac } from "crypto";
 import { getIO } from "../lib/socket";
+import { assertSafeUrl } from "../lib/ssrf";
 import { eq, and, sql } from "drizzle-orm";
 import { db } from "../db/index";
 import {
@@ -153,6 +154,7 @@ async function sendDiscord(
     footer: { text: "DeployKit" },
   };
 
+  await assertSafeUrl(webhookUrl);
   const res = await fetch(webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -187,6 +189,7 @@ async function sendSlack(
     if (elements.length > 0) blocks.push({ type: "context", elements });
   }
 
+  await assertSafeUrl(webhookUrl);
   const res = await fetch(webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -303,6 +306,7 @@ async function sendWebhook(
       `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
   }
 
+  await assertSafeUrl(url);
   const res = await fetch(url, {
     method: "POST",
     headers,

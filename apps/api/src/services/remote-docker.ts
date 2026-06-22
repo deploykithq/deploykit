@@ -1,12 +1,6 @@
 import { sshExec, type SSHConnectionOpts } from "./ssh";
 import { injectToken, sanitizeGitRef } from "./git";
-
-/**
- * Shell-escape a string by wrapping in single quotes (POSIX-safe).
- * Handles embedded single quotes correctly.
- */
-const shellEscape = (str: string): string =>
-  "'" + str.replace(/'/g, "'\"'\"'") + "'";
+import { shellEscape } from "../lib/shell";
 
 /**
  * Executes Docker commands on a remote server via SSH.
@@ -32,7 +26,10 @@ export class RemoteDockerService {
   }
 
   async pullImage(imageName: string): Promise<void> {
-    const result = await this.exec(this.docker(`pull ${imageName}`), 300_000);
+    const result = await this.exec(
+      this.docker(`pull ${shellEscape(imageName)}`),
+      300_000,
+    );
     if (result.code !== 0) {
       throw new Error(
         `Failed to pull image: ${result.stderr || result.stdout}`,
@@ -54,9 +51,12 @@ export class RemoteDockerService {
           .join(" ")
       : "";
 
-    // Stream-like: we run the build and get all output at once
+    // Stream-like: we run the build and get all output at once.
+    // Everything user-influenced is shell-escaped.
     const result = await this.exec(
-      `cd ${contextPath} && ${this.docker(`build -t ${tag} -f ${dockerfilePath} ${buildArgFlags} .`)}`,
+      `cd ${shellEscape(contextPath)} && ${this.docker(
+        `build -t ${shellEscape(tag)} -f ${shellEscape(dockerfilePath)} ${buildArgFlags} .`,
+      )}`,
       600_000,
     );
 
@@ -88,22 +88,29 @@ export class RemoteDockerService {
     // Ensure network exists
     if (opts.networkName) {
       await this.exec(
-        this.docker(`network create ${opts.networkName} 2>/dev/null || true`),
+        this.docker(
+          `network create ${shellEscape(opts.networkName)} 2>/dev/null || true`,
+        ),
       );
     }
 
     // Remove existing container
-    await this.exec(this.docker(`rm -f ${opts.name} 2>/dev/null || true`));
+    await this.exec(
+      this.docker(`rm -f ${shellEscape(opts.name)} 2>/dev/null || true`),
+    );
 
-    // Build docker run command
-    const args: string[] = ["run", "-d", "--name", opts.name];
+    // Build docker run command — every value is shell-escaped
+    const args: string[] = ["run", "-d", "--name", shellEscape(opts.name)];
 
     // Restart policy
-    args.push("--restart", opts.restartPolicy || "unless-stopped");
+    args.push(
+      "--restart",
+      shellEscape(opts.restartPolicy || "unless-stopped"),
+    );
 
     // Network
     if (opts.networkName) {
-      args.push("--network", opts.networkName);
+      args.push("--network", shellEscape(opts.networkName));
     }
 
     // Env vars (properly escaped to prevent injection)
@@ -116,30 +123,30 @@ export class RemoteDockerService {
     // Ports
     if (opts.ports) {
       for (const p of opts.ports) {
-        args.push("-p", `${p.host}:${p.container}`);
+        args.push("-p", `${Number(p.host)}:${Number(p.container)}`);
       }
     }
 
     // Volumes
     if (opts.volumes) {
       for (const v of opts.volumes) {
-        args.push("-v", v);
+        args.push("-v", shellEscape(v));
       }
     }
 
     // Labels
     if (opts.labels) {
       for (const [k, v] of Object.entries(opts.labels)) {
-        args.push("--label", `"${k}=${v}"`);
+        args.push("--label", shellEscape(`${k}=${v}`));
       }
     }
 
     // Image
-    args.push(opts.image);
+    args.push(shellEscape(opts.image));
 
     // Command
     if (opts.command) {
-      args.push(...opts.command);
+      args.push(...opts.command.map((c) => shellEscape(c)));
     }
 
     const result = await this.exec(this.docker(args.join(" ")), 120_000);
@@ -207,13 +214,16 @@ export class RemoteDockerService {
   }
 
   async start(containerId: string): Promise<void> {
-    const result = await this.exec(this.docker(`start ${containerId}`), 30_000);
+    const result = await this.exec(
+      this.docker(`start ${shellEscape(containerId)}`),
+      30_000,
+    );
     if (result.code !== 0) throw new Error(`Failed to start: ${result.stderr}`);
   }
 
   async stop(containerId: string): Promise<void> {
     const result = await this.exec(
-      this.docker(`stop -t 10 ${containerId}`),
+      this.docker(`stop -t 10 ${shellEscape(containerId)}`),
       30_000,
     );
     if (result.code !== 0) throw new Error(`Failed to stop: ${result.stderr}`);
@@ -221,18 +231,18 @@ export class RemoteDockerService {
 
   async stopAndRemove(containerId: string): Promise<void> {
     await this.exec(
-      this.docker(`stop -t 10 ${containerId} 2>/dev/null || true`),
+      this.docker(`stop -t 10 ${shellEscape(containerId)} 2>/dev/null || true`),
       30_000,
     );
     await this.exec(
-      this.docker(`rm -f ${containerId} 2>/dev/null || true`),
+      this.docker(`rm -f ${shellEscape(containerId)} 2>/dev/null || true`),
       15_000,
     );
   }
 
   async restart(containerId: string): Promise<void> {
     const result = await this.exec(
-      this.docker(`restart -t 10 ${containerId}`),
+      this.docker(`restart -t 10 ${shellEscape(containerId)}`),
       30_000,
     );
     if (result.code !== 0)
@@ -241,7 +251,9 @@ export class RemoteDockerService {
 
   async getLogs(containerId: string, tail = 100): Promise<string> {
     const result = await this.exec(
-      this.docker(`logs --tail ${tail} --timestamps ${containerId} 2>&1`),
+      this.docker(
+        `logs --tail ${Number(tail)} --timestamps ${shellEscape(containerId)} 2>&1`,
+      ),
       15_000,
     );
     return result.stdout;
@@ -254,7 +266,7 @@ export class RemoteDockerService {
   }> {
     const result = await this.exec(
       this.docker(
-        `stats --no-stream --format "{{.CPUPerc}}|||{{.MemUsage}}|||{{.MemPerc}}|||{{.NetIO}}" ${containerId}`,
+        `stats --no-stream --format "{{.CPUPerc}}|||{{.MemUsage}}|||{{.MemPerc}}|||{{.NetIO}}" ${shellEscape(containerId)}`,
       ),
       15_000,
     );

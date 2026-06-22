@@ -38,6 +38,11 @@ export const databaseRouter = router({
         });
 
       const projectRole = await getProjectRole(ctx.user, db.projectId);
+      if (!projectRole)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Database not found",
+        });
       const canView = canViewSecrets(projectRole);
       let connectionString = "";
       if (canView) {

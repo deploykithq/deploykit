@@ -11,11 +11,18 @@ import { UserRole } from "@deploykit/shared";
 export const projectMemberRouter = router({
   /**
    * List all members of a project.
-   * Any authenticated user can see who has access.
+   * Requires membership on the project (or global admin).
    */
   list: protectedProcedure
     .input(z.object({ projectId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      const callerRole = await getProjectRole(ctx.user, input.projectId);
+      if (!callerRole) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You are not a member of this project",
+        });
+      }
       const members = await ctx.db.query.projectMembers.findMany({
         where: eq(projectMembers.projectId, input.projectId),
         with: {

@@ -13,8 +13,12 @@ export interface Context {
 const createContext = async (req: FastifyRequest): Promise<Context> => {
   let user: User | null = null;
 
+  // Trust X-Forwarded-For only behind a configured proxy; otherwise it's
+  // client-spoofable and would poison audit logs / rate-limit keys.
   const ip =
-    (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
+    (process.env.TRUST_PROXY === "true"
+      ? (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim()
+      : undefined) ||
     req.ip ||
     "unknown";
 

@@ -5,8 +5,9 @@ services:
       POSTGRES_USER: deploykit
       POSTGRES_PASSWORD: deploykit_dev
       POSTGRES_DB: deploykit
+    # Bind to loopback only — never expose the DB on all host interfaces
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -17,8 +18,9 @@ services:
 
   redis:
     image: redis:7-alpine
+    # Bind to loopback only — Redis has no auth in dev
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -39,7 +41,8 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "8080:8080"
+      # Insecure dashboard — loopback only (dev convenience, never public)
+      - "127.0.0.1:8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - letsencrypt:/letsencrypt
