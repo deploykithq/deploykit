@@ -30,6 +30,9 @@ export interface DockerServiceI {
     labels?: Record<string, string>;
     command?: string[];
     restartPolicy?: string;
+    skipPull?: boolean;
+    cpuMillicores?: number;
+    memoryMb?: number;
   }): Promise<string>;
   deployApp(opts: {
     name: string;
@@ -39,11 +42,22 @@ export interface DockerServiceI {
     domains: Array<{ domain: string; https: boolean; port: number }>;
     labels?: Record<string, string>;
     volumes?: string[];
+    skipPull?: boolean;
+    replicas?: number;
+    cpuMillicores?: number;
+    memoryMb?: number;
   }): Promise<string>;
   start(containerId: string): Promise<void>;
   stop(containerId: string): Promise<void>;
   stopAndRemove(containerId: string): Promise<void>;
   restart(containerId: string): Promise<void>;
+  listServiceContainers(
+    serviceId: string,
+  ): Promise<Array<{ id: string; name: string; state: string }>>;
+  startServiceContainers(serviceId: string): Promise<void>;
+  stopServiceContainers(serviceId: string): Promise<void>;
+  removeServiceContainers(serviceId: string): Promise<void>;
+  scaleService(serviceId: string, target: number): Promise<number>;
   getLogs(containerId: string, tail?: number): Promise<string>;
   getStats(containerId: string): Promise<{
     cpu: number;

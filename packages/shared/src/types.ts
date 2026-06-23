@@ -49,12 +49,34 @@ export const createProjectSchema = z.object({
   description: z.string().max(500).optional(),
 });
 
+/**
+ * Loose Docker image reference matcher: [registry[:port]/]name[/name...][:tag][@digest].
+ * Used to allow `docker_image` applications to store an image ref (e.g. "n8nio/n8n:latest")
+ * in `repositoryUrl`, which the deploy worker pulls directly.
+ */
+const DOCKER_IMAGE_REF_REGEX =
+  /^([a-z0-9]+([._-][a-z0-9]+)*(:[0-9]+)?\/)?[a-z0-9]+([._-][a-z0-9]+)*(\/[a-z0-9]+([._-][a-z0-9]+)*)*(:[\w][\w.-]{0,127})?(@sha256:[a-f0-9]{64})?$/i;
+
+export const isDockerImageReference = (value: string): boolean =>
+  DOCKER_IMAGE_REF_REGEX.test(value);
+
+/**
+ * Repository source: a valid URL (git) OR a Docker image reference (docker_image source).
+ */
+export const repositoryUrlSchema = z
+  .string()
+  .max(500)
+  .refine(
+    (v) => z.string().url().safeParse(v).success || isDockerImageReference(v),
+    { message: "Must be a valid repository URL or Docker image reference" },
+  );
+
 export const createApplicationSchema = z.object({
   projectId: z.string().uuid(),
   name: z.string().min(1).max(100),
   // Source
   sourceType: SourceType,
-  repositoryUrl: z.string().url().optional(),
+  repositoryUrl: repositoryUrlSchema.optional(),
   branch: z.string().max(100).default("main"),
   sourceToken: z.string().max(500).optional(), // PAT for private repos
   rootDirectory: z.string().max(255).optional(), // subdirectory for monorepos
@@ -65,6 +87,17 @@ export const createApplicationSchema = z.object({
   // Runtime
   port: z.number().int().min(1).max(65535).optional(),
   volumes: z.array(z.string().max(500)).max(20).optional(), // ["host:container"]
+  // Resources
+  cpuLimit: z.number().int().min(100).max(8000).nullable().optional(), // millicores (null = unlimited)
+  memoryLimit: z.number().int().min(64).max(32768).nullable().optional(), // MB (null = unlimited)
+  replicas: z.number().int().min(1).max(10).optional(), // instances behind Traefik LB
+  // Autoscaling (requires a domain)
+  autoscaleEnabled: z.boolean().optional(),
+  autoscaleMin: z.number().int().min(1).max(10).optional(),
+  autoscaleMax: z.number().int().min(1).max(10).optional(),
+  autoscaleCpuTarget: z.number().int().min(10).max(100).nullable().optional(), // % (null = ignore)
+  autoscaleMemTarget: z.number().int().min(10).max(100).nullable().optional(), // % (null = ignore)
+  autoscaleCooldown: z.number().int().min(30).max(3600).optional(), // seconds
   // Server
   serverId: z.string().uuid().nullable().optional(),
 });

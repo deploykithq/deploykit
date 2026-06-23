@@ -10,6 +10,7 @@ import { metricsRouter } from "./metrics";
 import { notificationRouter } from "./notification";
 import { dashboardRouter } from "./dashboard";
 import { projectMemberRouter } from "./project-member";
+import { templateRouter } from "./template";
 
 export const appRouter = router({
   auth: authRouter,
@@ -23,6 +24,7 @@ export const appRouter = router({
   notification: notificationRouter,
   dashboard: dashboardRouter,
   projectMember: projectMemberRouter,
+  template: templateRouter,
 });
 
 export type AppRouter = typeof appRouter;

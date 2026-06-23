@@ -23,6 +23,7 @@ export default defineConfig({
       "@metrics": path.resolve(__dirname, "./src/features/metrics"),
       "@application": path.resolve(__dirname, "./src/features/application"),
       "@dashboard": path.resolve(__dirname, "./src/features/dashboard"),
+      "@templates": path.resolve(__dirname, "./src/features/templates"),
     },
   },
   build: {

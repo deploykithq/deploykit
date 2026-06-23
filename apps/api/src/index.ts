@@ -19,6 +19,7 @@ import { startDeployWorker } from "./workers/deploy.worker";
 import { startBackupWorker } from "./workers/backup.worker";
 import { startBackupScheduler } from "./workers/backup.scheduler";
 import { startMetricsScheduler } from "./workers/metrics.scheduler";
+import { startAutoscaleScheduler } from "./workers/autoscale.scheduler";
 import { startImageCleanupScheduler } from "./workers/image-cleanup.scheduler";
 import { startAuditCleanupScheduler } from "./workers/audit-cleanup.scheduler";
 import { WebhookService } from "./services/webhook";
@@ -255,6 +256,7 @@ async function main() {
   startBackupWorker();
   startBackupScheduler();
   startMetricsScheduler();
+  startAutoscaleScheduler();
   startImageCleanupScheduler();
   startAuditCleanupScheduler();
 }

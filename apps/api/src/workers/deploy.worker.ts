@@ -223,14 +223,13 @@ export function startDeployWorker() {
         emitDeployStatus(deploymentId, "deploying", { applicationId });
         log("\n── Deploying ──────────────────────────────────\n");
 
-        // Stop old container
-        if (app.containerId) {
-          log("Stopping previous container...\n");
-          try {
-            await dockerService.stopAndRemove(app.containerId);
-          } catch {
-            log("Previous container not found, skipping.\n");
-          }
+        // Stop old container(s). Remove every replica of this service by
+        // label so a scale-down doesn't leave orphans behind.
+        log("Stopping previous container(s)...\n");
+        try {
+          await dockerService.removeServiceContainers(app.id);
+        } catch {
+          log("No previous containers found, skipping.\n");
         }
 
         const containerName = `dk-${app.name}`;
@@ -250,7 +249,20 @@ export function startDeployWorker() {
 
         let containerId: string;
 
+        // Images built by us (Dockerfile/Nixpacks/Buildpacks) live only in the
+        // local image store — never pull them, or the daemon tries a registry
+        // pull of "deploykit/<name>" and fails with "pull access denied".
+        // For docker_image sources the image was already pulled above.
+        const skipPull = app.sourceType !== "docker_image";
+
+        const cpuMillicores = app.cpuLimit ?? undefined;
+        const memoryMb = app.memoryLimit ?? undefined;
+
         if (appDomains.length > 0) {
+          // Replicas only work behind Traefik (it load-balances containers
+          // sharing one service); cap at the configured count.
+          const replicas = Math.max(1, app.replicas ?? 1);
+          if (replicas > 1) log(`Replicas: ${replicas}\n`);
           containerId = await dockerService.deployApp({
             name: containerName,
             image: imageTag,
@@ -258,6 +270,10 @@ export function startDeployWorker() {
             port: app.port || 3000,
             domains: appDomains,
             volumes: appVolumes.length > 0 ? appVolumes : undefined,
+            skipPull,
+            replicas,
+            cpuMillicores,
+            memoryMb,
             labels: {
               "deploykit.project": app.projectId,
               "deploykit.service": app.id,
@@ -266,6 +282,11 @@ export function startDeployWorker() {
             },
           });
         } else {
+          // No domain → a fixed host port is published, which a second
+          // replica can't bind. Force a single instance.
+          if ((app.replicas ?? 1) > 1) {
+            log("Replicas require a domain; deploying a single instance.\n");
+          }
           containerId = await dockerService.createAndStart({
             name: containerName,
             image: imageTag,
@@ -273,6 +294,9 @@ export function startDeployWorker() {
             networkName: "deploykit-network",
             ports: app.port ? [{ host: app.port, container: app.port }] : [],
             volumes: appVolumes.length > 0 ? appVolumes : undefined,
+            skipPull,
+            cpuMillicores,
+            memoryMb,
             labels: {
               "deploykit.managed": "true",
               "deploykit.project": app.projectId,

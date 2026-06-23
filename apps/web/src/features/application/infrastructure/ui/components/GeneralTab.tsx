@@ -1,5 +1,5 @@
 import { memo, useState } from "react";
-import { Lock, HardDrive, GitBranch } from "lucide-react";
+import { Lock, HardDrive, GitBranch, Cpu, TrendingUp } from "lucide-react";
 
 import { Card, Button, Input, Select } from "@shared/components";
 import { CopyableField } from "@application/infrastructure/ui/components/CopyableField";
@@ -36,6 +36,39 @@ export const GeneralTab: React.FC<GeneralTabPropsI> = memo(function GeneralTab({
   const [startCommand, setStartCommand] = useState(app.startCommand || "");
   const [port, setPort] = useState(String(app.port || ""));
 
+  // Resources
+  const [cpuCores, setCpuCores] = useState(
+    app.cpuLimit ? String(app.cpuLimit / 1000) : "",
+  );
+  const [memoryMb, setMemoryMb] = useState(
+    app.memoryLimit ? String(app.memoryLimit) : "",
+  );
+  const [replicas, setReplicas] = useState(String(app.replicas ?? 1));
+  const hasDomain = (app.domains?.length ?? 0) > 0;
+
+  // Autoscaling
+  const [autoscaleEnabled, setAutoscaleEnabled] = useState(
+    app.autoscaleEnabled ?? false,
+  );
+  const [autoscaleMin, setAutoscaleMin] = useState(
+    String(app.autoscaleMin ?? 1),
+  );
+  const [autoscaleMax, setAutoscaleMax] = useState(
+    String(app.autoscaleMax ?? 3),
+  );
+  const [autoscaleCpuTarget, setAutoscaleCpuTarget] = useState(
+    app.autoscaleCpuTarget != null ? String(app.autoscaleCpuTarget) : "70",
+  );
+  const [autoscaleMemTarget, setAutoscaleMemTarget] = useState(
+    app.autoscaleMemTarget != null ? String(app.autoscaleMemTarget) : "",
+  );
+
+  // Live instance status (replicas). Polled while the tab is open.
+  const instancesQuery = trpc.application.instances.useQuery(
+    { id: applicationId },
+    { refetchInterval: 8000 },
+  );
+
   // Health check
   const [hcType, setHcType] = useState(app.healthCheckType ?? "http");
   const [hcPath, setHcPath] = useState(app.healthCheckPath ?? "/");
@@ -70,6 +103,22 @@ export const GeneralTab: React.FC<GeneralTabPropsI> = memo(function GeneralTab({
       ...(tokenDirty && { sourceToken: sourceToken || null }),
       rootDirectory: rootDirectory || null,
       volumes: volumes.length > 0 ? volumes : null,
+      // Resources: cores → millicores; empty = unlimited (null)
+      cpuLimit: cpuCores.trim()
+        ? Math.round(parseFloat(cpuCores) * 1000)
+        : null,
+      memoryLimit: memoryMb.trim() ? parseInt(memoryMb) : null,
+      replicas: parseInt(replicas) || 1,
+      // Autoscaling
+      autoscaleEnabled,
+      autoscaleMin: parseInt(autoscaleMin) || 1,
+      autoscaleMax: parseInt(autoscaleMax) || 3,
+      autoscaleCpuTarget: autoscaleCpuTarget.trim()
+        ? parseInt(autoscaleCpuTarget)
+        : null,
+      autoscaleMemTarget: autoscaleMemTarget.trim()
+        ? parseInt(autoscaleMemTarget)
+        : null,
       healthCheckType: hcType as any,
       healthCheckPath: hcPath || "/",
       healthCheckTimeout: parseInt(hcTimeout) || 5,
@@ -274,6 +323,158 @@ export const GeneralTab: React.FC<GeneralTabPropsI> = memo(function GeneralTab({
           <p className="text-[11px] text-text-muted">
             Format: /host/path:/container/path — data persists between deploys.
           </p>
+        </section>
+
+        {/* Resources */}
+        <section className="space-y-3 pt-4 border-t border-border">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted flex items-center gap-1.5">
+            <Cpu className="w-3 h-3" />
+            Resources
+          </h3>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="space-y-1.5">
+              <Input
+                label="CPU (cores)"
+                type="number"
+                min={0.1}
+                max={8}
+                step={0.1}
+                value={cpuCores}
+                onChange={(e) => setCpuCores(e.target.value)}
+                placeholder="unlimited"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Input
+                label="Memory (MB)"
+                type="number"
+                min={64}
+                max={32768}
+                value={memoryMb}
+                onChange={(e) => setMemoryMb(e.target.value)}
+                placeholder="unlimited"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Input
+                label="Replicas"
+                type="number"
+                min={1}
+                max={10}
+                value={replicas}
+                onChange={(e) => setReplicas(e.target.value)}
+                disabled={!hasDomain}
+              />
+            </div>
+          </div>
+
+          <p className="text-[11px] text-text-muted">
+            {hasDomain
+              ? "Replicas run behind the load balancer. "
+              : "Add a domain to scale beyond 1 replica. "}
+            Leave CPU/Memory empty for no limit. Changes apply on the next
+            deploy.
+          </p>
+
+          {/* Live instance status */}
+          {(instancesQuery.data?.length ?? 0) > 0 && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              {instancesQuery.data!.map((inst) => {
+                const running = inst.state === "running";
+                return (
+                  <span
+                    key={inst.id}
+                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-surface-2 border border-border text-[11px] font-mono text-text-secondary"
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${running ? "bg-success" : "bg-text-muted"}`}
+                    />
+                    {inst.name} {inst.state}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* Autoscaling */}
+        <section className="space-y-3 pt-4 border-t border-border">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted flex items-center gap-1.5">
+            <TrendingUp className="w-3 h-3" />
+            Autoscaling
+          </h3>
+
+          <label
+            className={`flex items-center gap-2.5 select-none ${
+              hasDomain ? "cursor-pointer" : "cursor-not-allowed opacity-60"
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={autoscaleEnabled && hasDomain}
+              disabled={!hasDomain}
+              onChange={(e) => setAutoscaleEnabled(e.target.checked)}
+              className="rounded"
+            />
+            <span className="text-xs text-text-secondary">
+              Automatically scale replicas by average CPU/memory load
+            </span>
+          </label>
+
+          {!hasDomain && (
+            <p className="text-[11px] text-text-muted">
+              Add a domain first — replicas (and autoscaling) require the load
+              balancer.
+            </p>
+          )}
+
+          {autoscaleEnabled && hasDomain && (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <Input
+                  label="Min replicas"
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={autoscaleMin}
+                  onChange={(e) => setAutoscaleMin(e.target.value)}
+                />
+                <Input
+                  label="Max replicas"
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={autoscaleMax}
+                  onChange={(e) => setAutoscaleMax(e.target.value)}
+                />
+                <Input
+                  label="CPU target %"
+                  type="number"
+                  min={10}
+                  max={100}
+                  value={autoscaleCpuTarget}
+                  onChange={(e) => setAutoscaleCpuTarget(e.target.value)}
+                  placeholder="off"
+                />
+                <Input
+                  label="Memory target %"
+                  type="number"
+                  min={10}
+                  max={100}
+                  value={autoscaleMemTarget}
+                  onChange={(e) => setAutoscaleMemTarget(e.target.value)}
+                  placeholder="off"
+                />
+              </div>
+              <p className="text-[11px] text-text-muted">
+                Adds a replica when sustained load exceeds a target, removes one
+                when it stays low — within the min/max bounds. CPU target is a
+                percentage of the CPU limit (or of one core if unset). Leave a
+                target empty to ignore that metric. Local servers only.
+              </p>
+            </>
+          )}
         </section>
 
         {/* Health Check */}

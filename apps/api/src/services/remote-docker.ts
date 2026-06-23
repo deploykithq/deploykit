@@ -84,6 +84,11 @@ export class RemoteDockerService {
     labels?: Record<string, string>;
     command?: string[];
     restartPolicy?: string;
+    // Accepted for interface parity; `docker run` only pulls when the image
+    // is missing locally on the remote, so no explicit pull to skip here.
+    skipPull?: boolean;
+    cpuMillicores?: number;
+    memoryMb?: number;
   }): Promise<string> {
     // Ensure network exists
     if (opts.networkName) {
@@ -100,6 +105,15 @@ export class RemoteDockerService {
 
     // Restart policy
     args.push("--restart", opts.restartPolicy || "unless-stopped");
+
+    // Resource limits
+    if (opts.cpuMillicores) {
+      args.push("--cpus", String(opts.cpuMillicores / 1000));
+    }
+    if (opts.memoryMb) {
+      args.push("--memory", `${opts.memoryMb}m`);
+      args.push("--memory-swap", `${opts.memoryMb}m`);
+    }
 
     // Network
     if (opts.networkName) {
@@ -161,6 +175,10 @@ export class RemoteDockerService {
     domains: Array<{ domain: string; https: boolean; port: number }>;
     labels?: Record<string, string>;
     volumes?: string[];
+    skipPull?: boolean;
+    replicas?: number;
+    cpuMillicores?: number;
+    memoryMb?: number;
   }): Promise<string> {
     const traefikLabels: Record<string, string> = {
       "traefik.enable": "true",
@@ -196,14 +214,102 @@ export class RemoteDockerService {
       }
     }
 
-    return this.createAndStart({
-      name: opts.name,
-      image: opts.image,
-      env: opts.env,
-      labels: { ...traefikLabels, ...opts.labels },
-      networkName: "deploykit-network",
-      volumes: opts.volumes,
-    });
+    const labels = { ...traefikLabels, ...opts.labels };
+    const replicas = Math.max(1, opts.replicas ?? 1);
+
+    // Scale-down safety: drop every prior instance of this service first.
+    const serviceId = opts.labels?.["deploykit.service"];
+    if (serviceId) {
+      await this.removeServiceContainers(serviceId);
+    }
+
+    // Identical Traefik labels across replicas → Traefik load-balances them.
+    let primaryId = "";
+    for (let i = 0; i < replicas; i++) {
+      const id = await this.createAndStart({
+        name: i === 0 ? opts.name : `${opts.name}-r${i}`,
+        image: opts.image,
+        env: opts.env,
+        labels,
+        networkName: "deploykit-network",
+        volumes: opts.volumes,
+        cpuMillicores: opts.cpuMillicores,
+        memoryMb: opts.memoryMb,
+      });
+      if (i === 0) primaryId = id;
+    }
+    return primaryId;
+  }
+
+  /**
+   * List container ids+names+state for a service via its `deploykit.service`
+   * label. One line per container: "<id> <name> <state>".
+   */
+  async listServiceContainers(
+    serviceId: string,
+  ): Promise<Array<{ id: string; name: string; state: string }>> {
+    const result = await this.exec(
+      this.docker(
+        `ps -a --filter ${shellEscape(`label=deploykit.service=${serviceId}`)} --format "{{.ID}} {{.Names}} {{.State}}"`,
+      ),
+      15_000,
+    );
+    if (result.code !== 0) return [];
+    return result.stdout
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l) => {
+        const [id, name, state] = l.split(/\s+/);
+        return { id: id || "", name: name || "", state: state || "" };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  private async serviceContainerIds(serviceId: string): Promise<string[]> {
+    const result = await this.exec(
+      this.docker(
+        `ps -aq --filter ${shellEscape(`label=deploykit.service=${serviceId}`)}`,
+      ),
+      15_000,
+    );
+    return result.stdout
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+  }
+
+  async startServiceContainers(serviceId: string): Promise<void> {
+    const ids = await this.serviceContainerIds(serviceId);
+    if (ids.length === 0) return;
+    await this.exec(this.docker(`start ${ids.join(" ")}`), 30_000);
+  }
+
+  async stopServiceContainers(serviceId: string): Promise<void> {
+    const ids = await this.serviceContainerIds(serviceId);
+    if (ids.length === 0) return;
+    await this.exec(this.docker(`stop -t 10 ${ids.join(" ")}`), 60_000);
+  }
+
+  async removeServiceContainers(serviceId: string): Promise<void> {
+    const ids = await this.serviceContainerIds(serviceId);
+    if (ids.length === 0) return;
+    await this.exec(
+      this.docker(`rm -f ${ids.join(" ")} 2>/dev/null || true`),
+      60_000,
+    );
+  }
+
+  /**
+   * Live replica scaling without a rebuild is not yet supported on remote
+   * (SSH) servers — cloning a container by inspect requires reconstructing the
+   * `docker run` spec. The autoscaler detects remote servers and skips them, so
+   * this should not be reached; it throws to make any accidental call loud.
+   */
+  async scaleService(_serviceId: string, _target: number): Promise<number> {
+    throw new Error(
+      "Live autoscaling is not supported on remote servers yet; redeploy to change replicas.",
+    );
   }
 
   async start(containerId: string): Promise<void> {
