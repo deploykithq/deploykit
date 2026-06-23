@@ -9,6 +9,7 @@ import {
   ProjectList,
   ActivityFeed,
   ServerOverview,
+  OnboardingWizard,
 } from "@dashboard/infrastructure/ui/components";
 
 import { trpc } from "@lib/trpc";
@@ -69,6 +70,17 @@ export const DashboardPage = () => {
           New Project
         </Button>
       </div>
+
+      {/* First-run onboarding (hidden once anything is deployed) */}
+      <OnboardingWizard
+        stats={{
+          servers: stats.servers,
+          projects: stats.projects,
+          applications: stats.applications,
+          databases: stats.databases,
+        }}
+        onCreateProject={() => setShowCreate(true)}
+      />
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

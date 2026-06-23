@@ -23,6 +23,7 @@ import {
 import {
   createApplicationSchema,
   addDomainSchema,
+  repositoryUrlSchema,
   SourceType,
   BuildType,
   DOCKERFILE_PATH_REGEX,
@@ -108,7 +109,7 @@ export const applicationRouter = router({
         id: z.string().uuid(),
         name: z.string().min(1).max(100).optional(),
         sourceType: SourceType.optional(),
-        repositoryUrl: z.string().url().optional(),
+        repositoryUrl: repositoryUrlSchema.optional(),
         branch: z.string().max(100).optional(),
         buildType: BuildType.optional(),
         dockerfilePath: z
@@ -128,6 +129,17 @@ export const applicationRouter = router({
           .nullable()
           .optional(),
         volumes: z.array(z.string().max(500)).max(20).nullable().optional(),
+        // Resources
+        cpuLimit: z.number().int().min(100).max(8000).nullable().optional(),
+        memoryLimit: z.number().int().min(64).max(32768).nullable().optional(),
+        replicas: z.number().int().min(1).max(10).optional(),
+        // Autoscaling
+        autoscaleEnabled: z.boolean().optional(),
+        autoscaleMin: z.number().int().min(1).max(10).optional(),
+        autoscaleMax: z.number().int().min(1).max(10).optional(),
+        autoscaleCpuTarget: z.number().int().min(10).max(100).nullable().optional(),
+        autoscaleMemTarget: z.number().int().min(10).max(100).nullable().optional(),
+        autoscaleCooldown: z.number().int().min(30).max(3600).optional(),
         // Health check
         healthCheckType: z.enum(["http", "tcp", "none"]).optional(),
         healthCheckPath: z
@@ -216,13 +228,11 @@ export const applicationRouter = router({
           code: "FORBIDDEN",
           message: "Admin access required for this project",
         });
-      if (app.containerId) {
-        try {
-          const { docker } = await getDockerForServer(app.serverId);
-          await docker.stopAndRemove(app.containerId);
-        } catch {
-          // Container might not exist
-        }
+      try {
+        const { docker } = await getDockerForServer(app.serverId);
+        await docker.removeServiceContainers(app.id);
+      } catch {
+        // Containers might not exist
       }
       await ctx.db.delete(applications).where(eq(applications.id, input.id));
       await logAction(ctx, {
@@ -522,10 +532,8 @@ export const applicationRouter = router({
       emitServiceStatus(app.id, "deploying");
 
       try {
-        // Stop current container
-        if (app.containerId) {
-          await dockerService.stopAndRemove(app.containerId).catch(() => {});
-        }
+        // Stop current container(s) — remove every replica by label.
+        await dockerService.removeServiceContainers(app.id).catch(() => {});
 
         // Decrypt env vars
         let envList: string[] = [];
@@ -553,6 +561,9 @@ export const applicationRouter = router({
         let containerId: string;
 
         // Use deployApp when domains exist (Traefik labels)
+        const cpuMillicores = app.cpuLimit ?? undefined;
+        const memoryMb = app.memoryLimit ?? undefined;
+
         if (appDomains.length > 0) {
           containerId = await dockerService.deployApp({
             name: containerName,
@@ -563,6 +574,9 @@ export const applicationRouter = router({
             volumes: appVolumes.length > 0 ? appVolumes : undefined,
             labels: baseLabels,
             skipPull: true, // image is already local
+            replicas: Math.max(1, app.replicas ?? 1),
+            cpuMillicores,
+            memoryMb,
           } as any);
         } else {
           containerId = await dockerService.createAndStart({
@@ -574,6 +588,8 @@ export const applicationRouter = router({
             volumes: appVolumes.length > 0 ? appVolumes : undefined,
             labels: baseLabels,
             skipPull: true,
+            cpuMillicores,
+            memoryMb,
           } as any);
         }
 
@@ -658,7 +674,7 @@ export const applicationRouter = router({
           message: "Operator access required for this project",
         });
       const { docker } = await getDockerForServer(app.serverId);
-      await docker.start(app.containerId);
+      await docker.startServiceContainers(app.id);
       await ctx.db
         .update(applications)
         .set({ status: "running", updatedAt: new Date() })
@@ -690,7 +706,7 @@ export const applicationRouter = router({
           message: "Operator access required for this project",
         });
       const { docker } = await getDockerForServer(app.serverId);
-      await docker.stop(app.containerId);
+      await docker.stopServiceContainers(app.id);
       await ctx.db
         .update(applications)
         .set({ status: "stopped", updatedAt: new Date() })
@@ -737,6 +753,22 @@ export const applicationRouter = router({
         return await docker.getStats(app.containerId);
       } catch {
         return null;
+      }
+    }),
+
+  /** Running instances (replicas) of an app, for the status display. */
+  instances: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const app = await ctx.db.query.applications.findFirst({
+        where: eq(applications.id, input.id),
+      });
+      if (!app) return [];
+      try {
+        const { docker } = await getDockerForServer(app.serverId);
+        return await docker.listServiceContainers(app.id);
+      } catch {
+        return [];
       }
     }),
 
@@ -829,10 +861,15 @@ const FORBIDDEN_PATHS = [
   "/lib",
 ];
 
+// Docker named-volume name: starts alphanumeric, then [a-zA-Z0-9_.-].
+const NAMED_VOLUME_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
+
 /**
  * Validate volume mount strings.
- * Format: /host/path:/container/path[:ro]
- * Blocks access to sensitive host directories.
+ * Format: <source>:/container/path[:ro] where <source> is either an absolute
+ * host path (bind mount) or a Docker named volume (e.g. "dk-app-data").
+ * Bind mounts are blocked from sensitive host directories; the container path
+ * must always be absolute and free of traversal.
  */
 const validateVolumes = (volumes: string[]): void => {
   for (const vol of volumes) {
@@ -840,41 +877,47 @@ const validateVolumes = (volumes: string[]): void => {
     if (parts.length < 2 || parts.length > 3) {
       throw new TRPCError({
         code: "BAD_REQUEST",
-        message: `Invalid volume format: "${vol}". Use /host/path:/container/path`,
+        message: `Invalid volume format: "${vol}". Use /host/path:/container/path or volume-name:/container/path`,
       });
     }
 
-    const hostPath = parts[0]!;
+    const source = parts[0]!;
     const containerPath = parts[1]!;
 
-    // Must be absolute paths
-    if (!hostPath.startsWith("/") || !containerPath.startsWith("/")) {
+    // Container path must always be absolute with no traversal
+    if (!containerPath.startsWith("/") || containerPath.includes("..")) {
       throw new TRPCError({
         code: "BAD_REQUEST",
-        message: `Volume paths must be absolute: "${vol}"`,
+        message: `Container path must be absolute and free of '..': "${vol}"`,
       });
     }
 
-    // No path traversal
-    if (hostPath.includes("..") || containerPath.includes("..")) {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: "Volume paths cannot contain '..'",
-      });
-    }
-
-    // Block sensitive host paths
-    const normalizedHost = hostPath.replace(/\/+$/g, "");
-    for (const forbidden of FORBIDDEN_PATHS) {
-      if (
-        normalizedHost === forbidden ||
-        normalizedHost.startsWith(forbidden + "/")
-      ) {
+    if (source.startsWith("/")) {
+      // Bind mount — block traversal and sensitive host paths
+      if (source.includes("..")) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: `Cannot mount "${forbidden}" — sensitive system path`,
+          message: "Volume paths cannot contain '..'",
         });
       }
+      const normalizedHost = source.replace(/\/+$/g, "");
+      for (const forbidden of FORBIDDEN_PATHS) {
+        if (
+          normalizedHost === forbidden ||
+          normalizedHost.startsWith(forbidden + "/")
+        ) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Cannot mount "${forbidden}" — sensitive system path`,
+          });
+        }
+      }
+    } else if (!NAMED_VOLUME_REGEX.test(source)) {
+      // Named Docker volume — must be a valid volume name
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: `Invalid volume source: "${source}". Use an absolute host path or a Docker volume name`,
+      });
     }
   }
 };

@@ -44,6 +44,17 @@ export const applications = pgTable("applications", {
   envVars: text("env_vars"),
   volumes: jsonb("volumes").$type<string[]>(),
   port: integer("port"),
+  // Resources
+  cpuLimit: integer("cpu_limit"), // millicores (null = unlimited); 1000 = 1 core
+  memoryLimit: integer("memory_limit"), // MB (null = unlimited)
+  replicas: integer("replicas").default(1).notNull(), // instances behind Traefik LB
+  // Autoscaling (requires a domain — replicas ride Traefik LB)
+  autoscaleEnabled: boolean("autoscale_enabled").default(false).notNull(),
+  autoscaleMin: integer("autoscale_min").default(1).notNull(), // lower replica bound
+  autoscaleMax: integer("autoscale_max").default(3).notNull(), // upper replica bound
+  autoscaleCpuTarget: integer("autoscale_cpu_target"), // target avg CPU % (null = ignore)
+  autoscaleMemTarget: integer("autoscale_mem_target"), // target avg mem % (null = ignore)
+  autoscaleCooldown: integer("autoscale_cooldown").default(180).notNull(), // seconds between actions
   // Server
   serverId: uuid("server_id").references(() => servers.id, {
     onDelete: "set null",

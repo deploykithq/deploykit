@@ -42,6 +42,11 @@ const AlertsPage = lazy(() =>
     default: m.AlertsPage,
   })),
 );
+const TemplatesPage = lazy(() =>
+  import("@templates/infrastructure/ui/pages/Templates").then((m) => ({
+    default: m.TemplatesPage,
+  })),
+);
 const ProjectDetailPage = lazy(() =>
   import("@project/infrastructure/ui/pages/ProjectDetail").then((m) => ({
     default: m.ProjectDetailPage,
@@ -141,6 +146,12 @@ export const alertsRoute = createRoute({
   component: withSuspense(AlertsPage),
 });
 
+export const templatesRoute = createRoute({
+  getParentRoute: () => authLayoutRoute,
+  path: "/templates",
+  component: withSuspense(TemplatesPage),
+});
+
 export const projectDetailRoute = createRoute({
   getParentRoute: () => authLayoutRoute,
   path: "/projects/$projectId",
@@ -172,6 +183,7 @@ const routeTree = rootRoute.addChildren([
     settingsRoute,
     auditLogRoute,
     alertsRoute,
+    templatesRoute,
   ]),
 ]);
 

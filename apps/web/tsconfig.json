@@ -21,7 +21,8 @@
       "@audit/*": ["./src/features/audit/*"],
       "@metrics/*": ["./src/features/metrics/*"],
       "@application/*": ["./src/features/application/*"],
-      "@dashboard/*": ["./src/features/dashboard/*"]
+      "@dashboard/*": ["./src/features/dashboard/*"],
+      "@templates/*": ["./src/features/templates/*"]
     }
   },
   "include": ["src/**/*"]
