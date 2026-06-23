@@ -113,6 +113,13 @@
       "when": 1776689322230,
       "tag": "0015_add_autoscaling",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1776689322231,
+      "tag": "0016_add_webhook_secret",
+      "breakpoints": true
     }
   ]
 }
