@@ -1,5 +1,17 @@
 import { z } from "zod";
 
+// A safe relative path: no leading slash, no "..", only word chars, dots,
+// dashes and forward slashes. Used for build context sub-paths to prevent
+// path traversal on the build host.
+export const RELATIVE_PATH_REGEX = /^(?!.*\.\.)[A-Za-z0-9._][A-Za-z0-9._\-/]*$/;
+
+// Same, but a leading "./" is allowed (Dockerfile locations).
+export const DOCKERFILE_PATH_REGEX =
+  /^(?:\.\/)?(?!.*\.\.)[A-Za-z0-9._][A-Za-z0-9._\-/]*$/;
+
+// HTTP request path: must start with "/", no "..", no scheme/host injection.
+export const HTTP_PATH_REGEX = /^\/(?!.*\.\.)[A-Za-z0-9._\-/~%?&=]*$/;
+
 export const SourceType = z.enum(["github", "gitlab", "git", "docker_image"]);
 export const BuildType = z.enum(["dockerfile", "nixpacks", "buildpacks"]);
 export const ServiceStatus = z.enum([
@@ -79,10 +91,18 @@ export const createApplicationSchema = z.object({
   repositoryUrl: repositoryUrlSchema.optional(),
   branch: z.string().max(100).default("main"),
   sourceToken: z.string().max(500).optional(), // PAT for private repos
-  rootDirectory: z.string().max(255).optional(), // subdirectory for monorepos
+  rootDirectory: z
+    .string()
+    .max(255)
+    .regex(RELATIVE_PATH_REGEX, "Invalid root directory")
+    .optional(), // subdirectory for monorepos
   // Build
   buildType: BuildType.default("nixpacks"),
-  dockerfilePath: z.string().max(255).default("./Dockerfile"),
+  dockerfilePath: z
+    .string()
+    .max(255)
+    .regex(DOCKERFILE_PATH_REGEX, "Invalid Dockerfile path")
+    .default("./Dockerfile"),
   startCommand: z.string().max(500).optional(), // override Nixpacks start command (e.g. "npm run start:prod")
   // Runtime
   port: z.number().int().min(1).max(65535).optional(),

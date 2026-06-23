@@ -26,6 +26,9 @@ import {
   repositoryUrlSchema,
   SourceType,
   BuildType,
+  DOCKERFILE_PATH_REGEX,
+  RELATIVE_PATH_REGEX,
+  HTTP_PATH_REGEX,
 } from "@deploykit/shared";
 
 export const applicationRouter = router({
@@ -43,17 +46,26 @@ export const applicationRouter = router({
         });
 
       const projectRole = await getProjectRole(ctx.user, app.projectId);
+      if (!projectRole)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Application not found",
+        });
       let envVars: Record<string, string> = {};
       const canViewEnv = canViewSecrets(projectRole);
       if (app.envVars && canViewEnv) {
         envVars = decryptEnvVars(app.envVars);
       }
 
+      // Never ship secret material (even encrypted) to the client
+      const { sourceToken: _st, webhookSecret: _ws, ...safeApp } = app;
+
       return {
-        ...app,
+        ...safeApp,
         envVars,
         canViewEnv,
         hasSourceToken: !!app.sourceToken,
+        hasWebhookSecret: !!app.webhookSecret,
         projectRole,
       };
     }),
@@ -100,12 +112,22 @@ export const applicationRouter = router({
         repositoryUrl: repositoryUrlSchema.optional(),
         branch: z.string().max(100).optional(),
         buildType: BuildType.optional(),
-        dockerfilePath: z.string().max(255).optional(),
+        dockerfilePath: z
+          .string()
+          .max(255)
+          .regex(DOCKERFILE_PATH_REGEX, "Invalid Dockerfile path")
+          .optional(),
         startCommand: z.string().max(500).nullable().optional(),
         port: z.number().int().min(1).max(65535).optional(),
         serverId: z.string().uuid().nullable().optional(),
         sourceToken: z.string().max(500).nullable().optional(),
-        rootDirectory: z.string().max(255).nullable().optional(),
+        webhookSecret: z.string().min(16).max(200).nullable().optional(),
+        rootDirectory: z
+          .string()
+          .max(255)
+          .regex(RELATIVE_PATH_REGEX, "Invalid root directory")
+          .nullable()
+          .optional(),
         volumes: z.array(z.string().max(500)).max(20).nullable().optional(),
         // Resources
         cpuLimit: z.number().int().min(100).max(8000).nullable().optional(),
@@ -120,7 +142,11 @@ export const applicationRouter = router({
         autoscaleCooldown: z.number().int().min(30).max(3600).optional(),
         // Health check
         healthCheckType: z.enum(["http", "tcp", "none"]).optional(),
-        healthCheckPath: z.string().max(255).optional(),
+        healthCheckPath: z
+          .string()
+          .max(255)
+          .regex(HTTP_PATH_REGEX, "Invalid health check path")
+          .optional(),
         healthCheckTimeout: z.number().int().min(1).max(60).optional(),
         healthCheckInterval: z.number().int().min(1).max(60).optional(),
         healthCheckRetries: z.number().int().min(1).max(20).optional(),
@@ -137,14 +163,24 @@ export const applicationRouter = router({
           code: "FORBIDDEN",
           message: "Operator access required for this project",
         });
-      const { id, sourceToken, rootDirectory, startCommand, volumes, ...data } =
-        input;
+      const {
+        id,
+        sourceToken,
+        webhookSecret,
+        rootDirectory,
+        startCommand,
+        volumes,
+        ...data
+      } = input;
       const [app] = await ctx.db
         .update(applications)
         .set({
           ...data,
           ...(sourceToken !== undefined && {
             sourceToken: sourceToken ? encrypt(sourceToken) : null,
+          }),
+          ...(webhookSecret !== undefined && {
+            webhookSecret: webhookSecret ? encrypt(webhookSecret) : null,
           }),
           ...(rootDirectory !== undefined && {
             rootDirectory: rootDirectory || null,

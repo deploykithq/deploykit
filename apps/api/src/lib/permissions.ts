@@ -11,21 +11,23 @@ const ROLE_LEVEL: Record<string, number> = {
 };
 
 /**
- * Returns the effective role for a user within a specific project.
+ * Returns the effective role for a user within a specific project,
+ * or null when the user has no access to that project at all.
  *
  * Rules:
  *  1. Global admin → always admin (superadmin, cannot be downgraded per-project)
  *  2. If user has a project_members entry → use that role
- *  3. Otherwise → fall back to global role
+ *  3. Otherwise → no access (membership is required; the global role only
+ *     gates instance-level actions such as creating projects or servers)
  */
 const getProjectRole = async (
   user: User,
   projectId: string,
-): Promise<UserRole> => {
+): Promise<UserRole | null> => {
   // Global admins are always admin everywhere
   if (user.role === "admin") return "admin";
 
-  // Check for per-project override
+  // Check for per-project membership
   const member = await db.query.projectMembers.findFirst({
     where: and(
       eq(projectMembers.projectId, projectId),
@@ -35,8 +37,7 @@ const getProjectRole = async (
 
   if (member) return member.role as UserRole;
 
-  // Fall back to global role
-  return user.role as UserRole;
+  return null;
 };
 
 /**
@@ -45,7 +46,7 @@ const getProjectRole = async (
 const getProjectRoleByAppId = async (
   user: User,
   applicationId: string,
-): Promise<UserRole> => {
+): Promise<UserRole | null> => {
   if (user.role === "admin") return "admin";
 
   const app = await db.query.applications.findFirst({
@@ -53,7 +54,7 @@ const getProjectRoleByAppId = async (
     columns: { projectId: true },
   });
 
-  if (!app) return user.role as UserRole;
+  if (!app) return null;
   return getProjectRole(user, app.projectId);
 };
 
@@ -63,7 +64,7 @@ const getProjectRoleByAppId = async (
 const getProjectRoleByDbId = async (
   user: User,
   databaseId: string,
-): Promise<UserRole> => {
+): Promise<UserRole | null> => {
   if (user.role === "admin") return "admin";
 
   const database = await db.query.databases.findFirst({
@@ -71,20 +72,37 @@ const getProjectRoleByDbId = async (
     columns: { projectId: true },
   });
 
-  if (!database) return user.role as UserRole;
+  if (!database) return null;
   return getProjectRole(user, database.projectId);
 };
 
-// Permission checks
-const canOperate = (role: UserRole): boolean => {
+/**
+ * IDs of all projects the user can see (all projects for global admins,
+ * member projects otherwise).
+ */
+const getAccessibleProjectIds = async (user: User): Promise<string[]> => {
+  const memberships = await db.query.projectMembers.findMany({
+    where: eq(projectMembers.userId, user.id),
+    columns: { projectId: true },
+  });
+  return memberships.map((m) => m.projectId);
+};
+
+// Permission checks (null role = no access to the project)
+const canView = (role: UserRole | null): boolean => {
+  return role !== null;
+};
+
+const canOperate = (role: UserRole | null): boolean => {
+  if (!role) return false;
   return ROLE_LEVEL[role]! >= ROLE_LEVEL["operator"]!;
 };
 
-const isAdmin = (role: UserRole): boolean => {
+const isAdmin = (role: UserRole | null): boolean => {
   return role === "admin";
 };
 
-const canViewSecrets = (role: UserRole): boolean => {
+const canViewSecrets = (role: UserRole | null): boolean => {
   return role === "admin" || role === "operator";
 };
 
@@ -92,6 +110,8 @@ export {
   getProjectRole,
   getProjectRoleByAppId,
   getProjectRoleByDbId,
+  getAccessibleProjectIds,
+  canView,
   canOperate,
   isAdmin,
   canViewSecrets,

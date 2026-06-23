@@ -25,7 +25,7 @@ export const userRouter = router({
       });
       if (existing) throw new Error("Email already in use");
 
-      const hashedPassword = await bcrypt.hash(input.password, 12);
+      const hashedPassword = await bcrypt.hash(input.password, 13);
       const [user] = await ctx.db
         .insert(users)
         .values({ email: input.email, password: hashedPassword, role: input.role })
@@ -80,7 +80,7 @@ export const userRouter = router({
         where: eq(users.id, input.id),
       });
 
-      const hashedPassword = await bcrypt.hash(input.newPassword, 12);
+      const hashedPassword = await bcrypt.hash(input.newPassword, 13);
       const [user] = await ctx.db
         .update(users)
         .set({ password: hashedPassword, updatedAt: new Date() })

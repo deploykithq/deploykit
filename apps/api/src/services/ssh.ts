@@ -1,6 +1,7 @@
 import { Client as SSHClient } from "ssh2";
 import { readFileSync } from "fs";
 import { decrypt } from "../lib/encryption";
+import { shellEscape } from "../lib/shell";
 
 export interface SSHConnectionOpts {
   host: string;
@@ -267,7 +268,7 @@ export async function sshInstallDocker(
     if (opts.username !== "root") {
       await sshExec(
         opts,
-        `${s}usermod -aG docker ${opts.username} 2>&1`,
+        `${s}usermod -aG docker ${shellEscape(opts.username)} 2>&1`,
         15_000,
       );
     }

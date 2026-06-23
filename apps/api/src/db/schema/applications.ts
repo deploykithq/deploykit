@@ -28,6 +28,9 @@ export const applications = pgTable("applications", {
   branch: varchar("branch", { length: 100 }).default("main").notNull(),
   sourceToken: text("source_token"),
   rootDirectory: varchar("root_directory", { length: 255 }),
+  // Per-application webhook secret (encrypted at rest); falls back to the
+  // global WEBHOOK_SECRET when unset
+  webhookSecret: text("webhook_secret"),
   // Build
   buildType: varchar("build_type", { length: 20 })
     .default("nixpacks")

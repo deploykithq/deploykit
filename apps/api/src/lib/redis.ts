@@ -48,4 +48,33 @@ const refreshTokenStore = {
   },
 };
 
-export { refreshTokenStore, redis, deployQueue, backupQueue };
+/**
+ * Distributed fixed-window rate limiter backed by Redis, so limits hold
+ * across multiple API processes. Returns true when the request exceeds
+ * maxRequests within windowMs. Fails open if Redis is unreachable.
+ */
+const isRateLimited = async (
+  key: string,
+  maxRequests: number,
+  windowMs: number,
+): Promise<boolean> => {
+  const redisKey = `rl:${key}`;
+  try {
+    const count = await redis.incr(redisKey);
+    if (count === 1) {
+      await redis.pexpire(redisKey, windowMs);
+    }
+    return count > maxRequests;
+  } catch {
+    // Don't take the API down if Redis hiccups
+    return false;
+  }
+};
+
+export {
+  refreshTokenStore,
+  redis,
+  deployQueue,
+  backupQueue,
+  isRateLimited,
+};

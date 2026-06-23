@@ -1,8 +1,10 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { eq, desc, and, isNull } from "drizzle-orm";
 
 import { alertRules, alertEvents } from "../db/schema/index";
 import { getHistory } from "../services/metrics";
+import { canViewService } from "../lib/socket-auth";
 import {
   router,
   protectedProcedure,
@@ -20,7 +22,10 @@ export const metricsRouter = router({
   // Returns the last ~60 samples (30 min at 30s intervals)
   history: protectedProcedure
     .input(z.object({ serviceId: z.string().uuid() }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
+      if (!(await canViewService(ctx.user, input.serviceId))) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Service not found" });
+      }
       return getHistory(input.serviceId);
     }),
 

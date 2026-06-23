@@ -10,9 +10,22 @@ const getSocket = (): Socket => {
     socket = io(window.location.origin, {
       path: "/ws",
       transports: ["websocket"],
+      // Callback form so reconnects always pick up the current token
+      auth: (cb) => cb({ token: localStorage.getItem("accessToken") }),
     });
   }
   return socket;
+};
+
+/**
+ * Force a fresh handshake (e.g. right after login) so the server
+ * authenticates the socket with the new access token.
+ */
+const reconnectSocket = (): void => {
+  if (socket) {
+    socket.disconnect();
+    socket.connect();
+  }
 };
 
 /**
@@ -110,7 +123,13 @@ const useServiceUpdates = () => {
   }, [utils]);
 };
 
-export { getSocket, useDeployLogs, useContainerLogs, useServiceUpdates };
+export {
+  getSocket,
+  reconnectSocket,
+  useDeployLogs,
+  useContainerLogs,
+  useServiceUpdates,
+};
 
 export interface MetricsUpdate {
   serviceId: string;
