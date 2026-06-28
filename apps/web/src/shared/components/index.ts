@@ -3,6 +3,7 @@ export { Card } from "./Card";
 export { ConfirmDialog } from "./ConfirmDialog";
 export { EmptyState } from "./EmptyState";
 export { Input } from "./Input";
+export { LogSearchPanel } from "./LogSearchPanel";
 export { Modal } from "./Modal";
 export { Select } from "./Select";
 export { StatusBadge } from "./StatusBadge";

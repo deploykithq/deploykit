@@ -12,6 +12,7 @@ import { dashboardRouter } from "./dashboard";
 import { projectMemberRouter } from "./project-member";
 import { templateRouter } from "./template";
 import { statusRouter } from "./status";
+import { logsRouter } from "./logs";
 
 export const appRouter = router({
   auth: authRouter,
@@ -27,6 +28,7 @@ export const appRouter = router({
   projectMember: projectMemberRouter,
   template: templateRouter,
   status: statusRouter,
+  logs: logsRouter,
 });
 
 export type AppRouter = typeof appRouter;
