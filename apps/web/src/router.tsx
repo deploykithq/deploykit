@@ -62,6 +62,11 @@ const ApplicationDetailPage = lazy(() =>
     (m) => ({ default: m.ApplicationDetailPage }),
   ),
 );
+const StatusPage = lazy(() =>
+  import("@status/infrastructure/ui/pages/StatusPage").then((m) => ({
+    default: m.StatusPage,
+  })),
+);
 
 const PageFallback = () => (
   <div className="text-sm text-text-muted p-6">Loading...</div>
@@ -90,6 +95,14 @@ export const loginRoute = createRoute({
   },
 });
 
+
+// Public, unauthenticated status page. Lives under the root route (not the
+// auth layout) so visitors without a session can reach it.
+export const statusPageRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/status/$slug",
+  component: withSuspense(StatusPage),
+});
 
 // Pathless layout route — wraps all protected pages.
 // Children inherit the guard without any URL segment.
@@ -172,6 +185,7 @@ export const dbDetailRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   loginRoute,
+  statusPageRoute,
   authLayoutRoute.addChildren([
     dashboardRoute,
     projectsIndexRoute,

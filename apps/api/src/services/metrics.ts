@@ -18,8 +18,11 @@ export interface CurrentMetrics extends MetricSample {
 
 const RING_KEY = (id: string) => `metrics:ring:${id}`;
 const CURRENT_KEY = (id: string) => `metrics:current:${id}`;
+const PENDING_KEY = (id: string) => `metrics:pending:${id}`;
 const RING_SIZE = 60; // 60 samples × 30s = 30 min of history
 const TTL_SEC = 60 * 60; // expire after 1h of inactivity
+const PENDING_TTL_SEC = 5 * 60; // safety expiry; drained every 60s by the rollup scheduler
+const PENDING_MAX = 240; // cap unbounded growth if the rollup scheduler stalls
 
 export async function storeSample(
   serviceId: string,
@@ -46,6 +49,29 @@ export async function getCurrent(
 ): Promise<MetricSample | null> {
   const raw = await redis.get(CURRENT_KEY(serviceId));
   return raw ? (JSON.parse(raw) as MetricSample) : null;
+}
+
+// Pending buffer: each 30s sample is appended here and later drained (once a
+// minute) by the rollup scheduler, which aggregates it into a durable 1m row.
+// Kept separate from the live ring so draining never disturbs the live view.
+export async function pushPending(
+  serviceId: string,
+  sample: MetricSample,
+): Promise<void> {
+  const key = PENDING_KEY(serviceId);
+  const pipeline = redis.pipeline();
+  pipeline.rpush(key, JSON.stringify(sample));
+  pipeline.ltrim(key, -PENDING_MAX, -1);
+  pipeline.expire(key, PENDING_TTL_SEC);
+  await pipeline.exec();
+}
+
+// Atomically read + clear the pending buffer for a service.
+export async function drainPending(serviceId: string): Promise<MetricSample[]> {
+  const key = PENDING_KEY(serviceId);
+  const results = await redis.multi().lrange(key, 0, -1).del(key).exec();
+  const raw = (results?.[0]?.[1] as string[] | undefined) ?? [];
+  return raw.map((s) => JSON.parse(s) as MetricSample);
 }
 
 export interface DockerStatsRaw {

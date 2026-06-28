@@ -22,7 +22,8 @@
       "@metrics/*": ["./src/features/metrics/*"],
       "@application/*": ["./src/features/application/*"],
       "@dashboard/*": ["./src/features/dashboard/*"],
-      "@templates/*": ["./src/features/templates/*"]
+      "@templates/*": ["./src/features/templates/*"],
+      "@status/*": ["./src/features/status/*"]
     }
   },
   "include": ["src/**/*"]

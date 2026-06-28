@@ -8,5 +8,6 @@ export * from "./domains";
 export * from "./audit-logs";
 export * from "./alert-rules";
 export * from "./alert-events";
+export * from "./metric-samples";
 export * from "./notification-channels";
 export * from "./project-members";

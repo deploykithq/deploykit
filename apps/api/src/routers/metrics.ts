@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { eq, desc, and, isNull } from "drizzle-orm";
+import { eq, desc, asc, and, gte, isNull } from "drizzle-orm";
 
-import { alertRules, alertEvents } from "../db/schema/index";
+import { alertRules, alertEvents, metricSamples } from "../db/schema/index";
 import { getHistory } from "../services/metrics";
 import { canViewService } from "../lib/socket-auth";
 import {
@@ -17,6 +17,16 @@ const metricEnum = z.enum(["cpu", "memory", "net_rx", "net_tx"]);
 const operatorEnum = z.enum(["gt", "lt"]);
 const channelEnum = z.enum(["ui", "slack", "webhook"]);
 const serviceTypeEnum = z.enum(["application", "database"]);
+const rangeEnum = z.enum(["1h", "6h", "24h", "7d", "30d"]);
+
+const HOUR = 60 * 60 * 1000;
+const RANGE_MS: Record<z.infer<typeof rangeEnum>, number> = {
+  "1h": HOUR,
+  "6h": 6 * HOUR,
+  "24h": 24 * HOUR,
+  "7d": 7 * 24 * HOUR,
+  "30d": 30 * 24 * HOUR,
+};
 
 export const metricsRouter = router({
   // Returns the last ~60 samples (30 min at 30s intervals)
@@ -27,6 +37,68 @@ export const metricsRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Service not found" });
       }
       return getHistory(input.serviceId);
+    }),
+
+  // Long-term downsampled history for trend charts. Ranges up to 24h use the
+  // 1-minute resolution; longer ranges use the 1-hour rollup.
+  timeseries: protectedProcedure
+    .input(
+      z.object({
+        serviceId: z.string().uuid(),
+        range: rangeEnum.default("24h"),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      if (!(await canViewService(ctx.user, input.serviceId))) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Service not found" });
+      }
+
+      const rangeMs = RANGE_MS[input.range];
+      const resolution = rangeMs <= RANGE_MS["24h"] ? "1m" : "1h";
+      const since = new Date(Date.now() - rangeMs);
+
+      const rows = await ctx.db.query.metricSamples.findMany({
+        where: and(
+          eq(metricSamples.serviceId, input.serviceId),
+          eq(metricSamples.resolution, resolution),
+          gte(metricSamples.bucket, since),
+        ),
+        orderBy: [asc(metricSamples.bucket)],
+      });
+
+      const points = rows.map((r) => ({
+        ts: r.bucket.getTime(),
+        cpu: r.cpuAvg,
+        cpuMax: r.cpuMax,
+        mem: r.memAvg,
+        memMax: r.memMax,
+        memUsed: r.memUsed,
+        netRx: r.netRx,
+        netTx: r.netTx,
+      }));
+
+      // Stitch the live Redis ring onto the tail so the chart stays current
+      // (the most recent minute isn't persisted until the rollup runs).
+      if (resolution === "1m") {
+        const lastTs = points.length ? points[points.length - 1]!.ts : 0;
+        const live = await getHistory(input.serviceId);
+        for (const s of live) {
+          if (s.ts > lastTs) {
+            points.push({
+              ts: s.ts,
+              cpu: s.cpu,
+              cpuMax: s.cpu,
+              mem: s.memPercent,
+              memMax: s.memPercent,
+              memUsed: s.memUsed,
+              netRx: s.netRx,
+              netTx: s.netTx,
+            });
+          }
+        }
+      }
+
+      return { resolution, range: input.range, points };
     }),
 
   listRules: protectedProcedure

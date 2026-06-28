@@ -120,6 +120,13 @@
       "when": 1776689322231,
       "tag": "0016_add_webhook_secret",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1776689322232,
+      "tag": "0017_add_metrics_history",
+      "breakpoints": true
     }
   ]
 }

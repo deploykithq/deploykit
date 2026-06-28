@@ -11,6 +11,7 @@ export type AuditAction =
   // Projects
   | "project.create"
   | "project.update"
+  | "project.update_status_page"
   | "project.delete"
   // Applications
   | "application.create"

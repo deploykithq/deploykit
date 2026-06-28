@@ -74,6 +74,8 @@ export const applications = pgTable("applications", {
   healthCheckRequired: boolean("health_check_required")
     .default(false)
     .notNull(),
+  // Public status page visibility (opt-in per app; project must also enable it)
+  statusPageVisible: boolean("status_page_visible").default(false).notNull(),
   // Preview deployments
   previewEnabled: boolean("preview_enabled").default(false).notNull(), // parent: enables PR previews
   previewDomain: varchar("preview_domain", { length: 255 }), // base domain, e.g. "example.com"

@@ -129,6 +129,71 @@ export const projectRouter = router({
       return project!;
     }),
 
+  updateStatusPage: operatorProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        enabled: z.boolean(),
+        slug: z
+          .string()
+          .regex(
+            /^[a-z0-9-]+$/,
+            "Use lowercase letters, numbers and hyphens only",
+          )
+          .min(1)
+          .max(80)
+          .optional(),
+        title: z.string().max(255).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const role = await getProjectRole(ctx.user, input.id);
+      if (!canOperate(role)) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Operator access required for this project",
+        });
+      }
+      if (input.enabled && !input.slug) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "A slug is required to enable the status page",
+        });
+      }
+      // Enforce slug uniqueness with a friendly error before hitting the
+      // unique index constraint.
+      if (input.slug) {
+        const existing = await ctx.db.query.projects.findFirst({
+          where: eq(projects.statusPageSlug, input.slug),
+          columns: { id: true },
+        });
+        if (existing && existing.id !== input.id) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "That status page slug is already in use",
+          });
+        }
+      }
+      const [project] = await ctx.db
+        .update(projects)
+        .set({
+          statusPageEnabled: input.enabled,
+          statusPageSlug: input.slug ?? null,
+          statusPageTitle: input.title ?? null,
+          updatedAt: new Date(),
+        })
+        .where(eq(projects.id, input.id))
+        .returning();
+      await logAction(ctx, {
+        action: "project.update_status_page",
+        resourceType: "project",
+        resourceId: project!.id,
+        resourceName: project!.name,
+        metadata: { enabled: input.enabled, slug: input.slug },
+      });
+      return project!;
+    }),
+
   delete: adminProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
