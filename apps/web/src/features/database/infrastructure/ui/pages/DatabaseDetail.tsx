@@ -9,6 +9,7 @@ import { Button, StatusBadge, ConfirmDialog } from "@shared/components";
 import {
   BackupsTab,
   ConnectionTab,
+  LogsTab,
   MonitoringTab,
 } from "@database/infrastructure/ui/components";
 
@@ -138,6 +139,7 @@ export const DatabaseDetailPage: React.FC = () => {
       {activeTab === "monitoring" && (
         <MonitoringTab db={db} databaseId={databaseId} />
       )}
+      {activeTab === "logs" && <LogsTab db={db} />}
 
       {/* Delete Confirm */}
       <ConfirmDialog

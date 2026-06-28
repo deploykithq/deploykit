@@ -23,8 +23,10 @@ import { startMetricsRollupScheduler } from "./workers/metrics-rollup.scheduler"
 import { startAutoscaleScheduler } from "./workers/autoscale.scheduler";
 import { startImageCleanupScheduler } from "./workers/image-cleanup.scheduler";
 import { startAuditCleanupScheduler } from "./workers/audit-cleanup.scheduler";
+import { startLogCollector } from "./workers/log-collector.scheduler";
+import { startLogCleanupScheduler } from "./workers/log-cleanup.scheduler";
 import { WebhookService } from "./services/webhook";
-import { startLogStream, stopLogStream } from "./services/logs";
+import { ensureLogStream, stopLogStream, isCollected } from "./services/logs";
 import { isRateLimited } from "./lib/redis";
 import { checkEnv } from "./lib/env-check";
 
@@ -65,10 +67,14 @@ async function main() {
 
   // Socket.IO (attach before Fastify starts). Auth + room authorization
   // live in lib/socket.ts; log streaming is wired in via hooks.
+  // The log collector owns streams for running containers (continuous capture).
+  // These hooks only cover the fallback case: a user viewing logs of a container
+  // the collector doesn't track (e.g. stopped/crashed). We never tear down a
+  // collected stream on unsubscribe.
   initSocket(httpServer, {
-    onLogsSubscribed: (containerId) => startLogStream(containerId),
+    onLogsSubscribed: (containerId) => ensureLogStream(containerId),
     onLogsUnsubscribed: (containerId, roomEmpty) => {
-      if (roomEmpty) stopLogStream(containerId);
+      if (roomEmpty && !isCollected(containerId)) stopLogStream(containerId);
     },
   });
 
@@ -258,6 +264,8 @@ async function main() {
   startAutoscaleScheduler();
   startImageCleanupScheduler();
   startAuditCleanupScheduler();
+  startLogCollector();
+  startLogCleanupScheduler();
 }
 
 main().catch((err) => {

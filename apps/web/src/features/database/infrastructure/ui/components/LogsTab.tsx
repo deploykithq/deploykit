@@ -1,40 +1,36 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 
 import { Card, LogSearchPanel } from "@shared/components";
-import { LogViewer } from "@application/infrastructure/ui/components/LogViewer";
 
-import { trpc } from "@lib/trpc";
 import { useContainerLogs } from "@lib/socket";
 import { cn } from "@lib/utils";
+import type { DatabaseI } from "@database/infrastructure/ui/interfaces/database.module.interfaces";
 
 interface LogsTabPropsI {
-  app: any;
+  db: DatabaseI;
 }
 
 type ModeT = "live" | "history";
 
-export const LogsTab: React.FC<LogsTabPropsI> = memo(function LogsTab({ app }) {
+export const LogsTab: React.FC<LogsTabPropsI> = memo(function LogsTab({ db }) {
   const [mode, setMode] = useState<ModeT>("live");
-
-  const { data: logsData } = trpc.application.logs.useQuery(
-    { id: app.id, tail: 200 },
-    { enabled: mode === "live" && !!app.containerId },
-  );
   const { logs: liveLogs } = useContainerLogs(
-    mode === "live" ? app.containerId : null,
+    mode === "live" ? (db.containerId ?? null) : null,
   );
+  const viewerRef = useRef<HTMLDivElement>(null);
 
-  const allLogs = [
-    ...(logsData?.logs ? logsData.logs.split("\n") : []),
-    ...liveLogs,
-  ];
+  useEffect(() => {
+    if (viewerRef.current) {
+      viewerRef.current.scrollTop = viewerRef.current.scrollHeight;
+    }
+  }, [liveLogs]);
 
   return (
     <Card>
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
-        <h3 className="text-sm font-medium">Container Logs</h3>
+        <h3 className="text-sm font-medium">Database Logs</h3>
         <div className="flex items-center gap-2">
-          {mode === "live" && !app.containerId && (
+          {mode === "live" && !db.containerId && (
             <span className="text-xs text-text-muted">No running container</span>
           )}
           <div className="flex rounded-lg border border-border overflow-hidden text-xs">
@@ -57,15 +53,24 @@ export const LogsTab: React.FC<LogsTabPropsI> = memo(function LogsTab({ app }) {
       </div>
 
       {mode === "live" ? (
-        <LogViewer
-          lines={
-            allLogs.length > 0
-              ? allLogs
-              : ["No logs available. Deploy your application first."]
-          }
-        />
+        <div
+          ref={viewerRef}
+          className="bg-surface-0 border border-border rounded-lg p-3 sm:p-4 max-h-64 sm:max-h-96 overflow-y-auto font-mono text-xs leading-5"
+        >
+          {(liveLogs.length > 0
+            ? liveLogs
+            : ["Waiting for live logs…"]
+          ).map((line, i) => (
+            <div
+              key={i}
+              className="text-text-secondary hover:text-text-primary whitespace-pre-wrap break-all"
+            >
+              {line}
+            </div>
+          ))}
+        </div>
       ) : (
-        <LogSearchPanel serviceId={app.id} serviceType="application" />
+        <LogSearchPanel serviceId={db.id} serviceType="database" />
       )}
     </Card>
   );

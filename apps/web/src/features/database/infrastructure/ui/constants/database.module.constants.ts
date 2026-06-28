@@ -1,4 +1,4 @@
-import { Shield, HardDrive, BarChart3 } from "lucide-react";
+import { Shield, HardDrive, BarChart3, ScrollText } from "lucide-react";
 
 import { TabT } from "@database/infrastructure/ui/types/database.module.types";
 
@@ -14,6 +14,7 @@ const TABS: { id: TabT; label: string; icon: React.ElementType }[] = [
   { id: "connection", label: "Connection", icon: Shield },
   { id: "backups", label: "Backups", icon: HardDrive },
   { id: "monitoring", label: "Monitoring", icon: BarChart3 },
+  { id: "logs", label: "Logs", icon: ScrollText },
 ];
 
 const CRON_PRESETS = [
