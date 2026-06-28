@@ -1,6 +1,7 @@
 import { memo } from "react";
 
 import { MetricsHistory } from "@metrics/infrastructure/ui/components/MetricsHistory";
+import { MetricsTrendChart } from "@metrics/infrastructure/ui/components/MetricsTrendChart";
 
 import { trpc } from "@lib/trpc";
 
@@ -33,6 +34,7 @@ export const MonitoringTab: React.FC<MonitoringTabPropsI> = memo(
         )}
 
         <MetricsHistory serviceId={databaseId} containerId={db.containerId ?? null} />
+        <MetricsTrendChart serviceId={databaseId} />
       </div>
     );
   },

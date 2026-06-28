@@ -13,6 +13,7 @@ import {
   NewApplicationModal,
   NewDatabaseModal,
   NotificationsSection,
+  StatusPageSection,
   MembersSection,
 } from "@project/infrastructure/ui/components";
 
@@ -190,6 +191,9 @@ export const ProjectDetailPage: React.FC = memo(function ProjectDetailPage() {
 
       {/* Notifications */}
       <NotificationsSection projectId={projectId} />
+
+      {/* Status Page */}
+      <StatusPageSection project={project} />
 
       {/* Members */}
       <MembersSection projectId={projectId} />

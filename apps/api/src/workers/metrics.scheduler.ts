@@ -7,7 +7,7 @@ import {
   alertRules,
   alertEvents,
 } from "../db/schema/index";
-import { storeSample, parseDockerStats } from "../services/metrics";
+import { storeSample, pushPending, parseDockerStats } from "../services/metrics";
 import { notify } from "../services/notifier";
 import { getIO } from "../lib/socket";
 import { redis } from "../lib/redis";
@@ -161,6 +161,8 @@ async function pollContainer(
     const sample = { ts: Date.now(), ...parsed };
 
     await storeSample(serviceId, sample);
+    // Buffer for the rollup scheduler to persist into long-term history.
+    await pushPending(serviceId, sample);
 
     // Emit live metrics update to subscribed frontend clients
     try {

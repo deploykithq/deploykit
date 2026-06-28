@@ -154,6 +154,8 @@ export const applicationRouter = router({
         // Preview deployments
         previewEnabled: z.boolean().optional(),
         previewDomain: z.string().max(255).nullable().optional(),
+        // Public status page visibility
+        statusPageVisible: z.boolean().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {

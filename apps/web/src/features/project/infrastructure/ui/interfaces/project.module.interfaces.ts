@@ -12,6 +12,7 @@ interface ApplicationI {
   sourceType: SourceTypeT;
   branch?: string;
   domains?: AppDomainI[];
+  statusPageVisible?: boolean;
   updatedAt: string | Date;
 }
 
@@ -29,6 +30,9 @@ interface ProjectI {
   id: string;
   name: string;
   description?: string;
+  statusPageEnabled?: boolean;
+  statusPageSlug?: string | null;
+  statusPageTitle?: string | null;
   applications: ApplicationI[];
   databases: ProjectDatabaseI[];
 }

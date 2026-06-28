@@ -24,6 +24,7 @@ export default defineConfig({
       "@application": path.resolve(__dirname, "./src/features/application"),
       "@dashboard": path.resolve(__dirname, "./src/features/dashboard"),
       "@templates": path.resolve(__dirname, "./src/features/templates"),
+      "@status": path.resolve(__dirname, "./src/features/status"),
     },
   },
   build: {

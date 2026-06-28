@@ -4,6 +4,7 @@ export { NewApplicationModal } from "./NewApplicationModal";
 export { NewDatabaseModal } from "./NewDatabaseModal";
 export { ServerSelector } from "./ServerSelector";
 export { NotificationsSection } from "./NotificationsSection";
+export { StatusPageSection } from "./StatusPageSection";
 export { NotificationChannelCard } from "./NotificationChannelCard";
 export { NotificationChannelModal } from "./NotificationChannelModal";
 export { MembersSection } from "./MembersSection";
