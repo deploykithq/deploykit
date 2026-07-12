@@ -14,6 +14,8 @@ if (!connectionString) {
 }
 
 const client = postgres(connectionString);
-export const db = drizzle(client, { schema });
+const db = drizzle(client, { schema });
 
-export type DB = typeof db;
+type DB = typeof db;
+
+export { db, type DB };

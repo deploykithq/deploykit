@@ -10,7 +10,7 @@ import { router, protectedProcedure } from "../trpc";
 
 import { deployQueue } from "../lib/redis";
 import { encrypt, encryptEnvVars, decryptEnvVars } from "../lib/encryption";
-import { logAction } from "../lib/audit";
+import { logAction } from "../lib/audit/audit";
 import { emitDeployStatus, emitServiceStatus } from "../lib/socket";
 import {
   getProjectRole,
@@ -156,6 +156,8 @@ export const applicationRouter = router({
         previewDomain: z.string().max(255).nullable().optional(),
         // Public status page visibility
         statusPageVisible: z.boolean().optional(),
+        // Image vulnerability scanning (null = inherit global default)
+        scanEnabled: z.boolean().nullable().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -733,7 +735,16 @@ export const applicationRouter = router({
       const app = await ctx.db.query.applications.findFirst({
         where: eq(applications.id, input.id),
       });
-      if (!app?.containerId) return { logs: "" };
+      // Authorization: only project members may read container logs.
+      const role = app
+        ? await getProjectRole(ctx.user, app.projectId)
+        : null;
+      if (!app || !role)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Application not found",
+        });
+      if (!app.containerId) return { logs: "" };
       try {
         const { docker } = await getDockerForServer(app.serverId);
         const logs = await docker.getLogs(app.containerId, input.tail);
@@ -749,7 +760,16 @@ export const applicationRouter = router({
       const app = await ctx.db.query.applications.findFirst({
         where: eq(applications.id, input.id),
       });
-      if (!app?.containerId) return null;
+      // Authorization: only project members may read live stats.
+      const role = app
+        ? await getProjectRole(ctx.user, app.projectId)
+        : null;
+      if (!app || !role)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Application not found",
+        });
+      if (!app.containerId) return null;
       try {
         const { docker } = await getDockerForServer(app.serverId);
         return await docker.getStats(app.containerId);
@@ -765,7 +785,15 @@ export const applicationRouter = router({
       const app = await ctx.db.query.applications.findFirst({
         where: eq(applications.id, input.id),
       });
-      if (!app) return [];
+      // Authorization: only project members may list running instances.
+      const role = app
+        ? await getProjectRole(ctx.user, app.projectId)
+        : null;
+      if (!app || !role)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Application not found",
+        });
       try {
         const { docker } = await getDockerForServer(app.serverId);
         return await docker.listServiceContainers(app.id);
@@ -777,6 +805,14 @@ export const applicationRouter = router({
   deployments: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      // Authorization: deployment history exposes build/deploy logs and scan
+      // results, so it's restricted to project members.
+      const role = await getProjectRoleByAppId(ctx.user, input.id);
+      if (!role)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Application not found",
+        });
       return ctx.db.query.deployments.findMany({
         where: eq(deployments.applicationId, input.id),
         orderBy: (d, { desc }) => [desc(d.createdAt)],
@@ -787,6 +823,13 @@ export const applicationRouter = router({
   listPreviews: protectedProcedure
     .input(z.object({ parentId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      // Authorization: only members of the parent app's project may list previews.
+      const role = await getProjectRoleByAppId(ctx.user, input.parentId);
+      if (!role)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Application not found",
+        });
       return ctx.db.query.applications.findMany({
         where: and(
           eq(applications.parentApplicationId, input.parentId),

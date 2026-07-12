@@ -1,12 +1,15 @@
 import { Server as SocketServer } from "socket.io";
-import type { Server as HttpServer } from "http";
+
 import { registerTerminalHandlers } from "../services/terminal";
+
 import {
   verifySocketAuth,
   canViewDeployment,
   canViewService,
 } from "./socket-auth";
-import type { User } from "../db/schema/index";
+
+import type { UserI } from "../db/schema/index";
+import type { Server as HttpServer } from "http";
 
 let io: SocketServer | null = null;
 
@@ -47,7 +50,7 @@ const initSocket = (
   });
 
   io.on("connection", (socket) => {
-    const user = socket.data.user as User;
+    const user = socket.data.user as UserI;
     console.log(`[socket] Client connected: ${socket.id} (user ${user.id})`);
 
     // Join deployment room for real-time logs

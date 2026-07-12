@@ -1,7 +1,7 @@
 import { lookup } from "dns/promises";
 import { isIP } from "net";
 
-/** True for loopback, private, link-local, and other non-public ranges. */
+// True for loopback, private, link-local, and other non-public ranges.
 const isBlockedAddress = (ip: string): boolean => {
   const v = ip.toLowerCase();
 
@@ -13,6 +13,7 @@ const isBlockedAddress = (ip: string): boolean => {
     // IPv4-mapped IPv6 (::ffff:a.b.c.d)
     const mapped = v.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/);
     if (mapped) return isBlockedAddress(mapped[1]!);
+
     return false;
   }
 
@@ -27,6 +28,7 @@ const isBlockedAddress = (ip: string): boolean => {
   if (a === 169 && b === 254) return true; // link-local incl. cloud metadata
   if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
   if (a >= 224) return true; // multicast / reserved
+
   return false;
 };
 
@@ -38,7 +40,7 @@ const isBlockedAddress = (ip: string): boolean => {
  *
  * Throws on any violation. Best-effort: pair with egress controls in prod.
  */
-export const assertSafeUrl = async (raw: string): Promise<void> => {
+const assertSafeUrl = async (raw: string): Promise<void> => {
   let url: URL;
   try {
     url = new URL(raw);
@@ -71,22 +73,29 @@ export const assertSafeUrl = async (raw: string): Promise<void> => {
   } catch {
     throw new Error("Could not resolve URL host");
   }
+
   if (records.some((r) => isBlockedAddress(r.address))) {
     throw new Error("URL resolves to a non-public address");
   }
 };
 
-/** Non-throwing variant for synchronous Zod refinements (no DNS lookup). */
-export const isLiterallyPublicUrl = (raw: string): boolean => {
+// Non-throwing variant for synchronous Zod refinements (no DNS lookup).
+const isLiterallyPublicUrl = (raw: string): boolean => {
   let url: URL;
   try {
     url = new URL(raw);
   } catch {
     return false;
   }
+
   if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+
   const host = url.hostname;
   if (host === "localhost" || host.endsWith(".localhost")) return false;
+
   if (isIP(host) && isBlockedAddress(host)) return false;
+
   return true;
 };
+
+export {assertSafeUrl, isLiterallyPublicUrl}

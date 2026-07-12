@@ -1,7 +1,9 @@
 import { eq, and } from "drizzle-orm";
+
 import { db } from "../db/index";
 import { projectMembers, applications, databases } from "../db/schema/index";
-import type { User } from "../db/schema/index";
+
+import type { UserI } from "../db/schema/index";
 import type { UserRole } from "@deploykit/shared";
 
 const ROLE_LEVEL: Record<string, number> = {
@@ -21,7 +23,7 @@ const ROLE_LEVEL: Record<string, number> = {
  *     gates instance-level actions such as creating projects or servers)
  */
 const getProjectRole = async (
-  user: User,
+  user: UserI,
   projectId: string,
 ): Promise<UserRole | null> => {
   // Global admins are always admin everywhere
@@ -40,11 +42,9 @@ const getProjectRole = async (
   return null;
 };
 
-/**
- * Resolve role from an application ID (looks up the app's projectId first).
- */
+// Resolve role from an application ID (looks up the app's projectId first).
 const getProjectRoleByAppId = async (
-  user: User,
+  user: UserI,
   applicationId: string,
 ): Promise<UserRole | null> => {
   if (user.role === "admin") return "admin";
@@ -58,11 +58,9 @@ const getProjectRoleByAppId = async (
   return getProjectRole(user, app.projectId);
 };
 
-/**
- * Resolve role from a database ID (looks up the db's projectId first).
- */
+// Resolve role from a database ID (looks up the db's projectId first).
 const getProjectRoleByDbId = async (
-  user: User,
+  user: UserI,
   databaseId: string,
 ): Promise<UserRole | null> => {
   if (user.role === "admin") return "admin";
@@ -76,11 +74,8 @@ const getProjectRoleByDbId = async (
   return getProjectRole(user, database.projectId);
 };
 
-/**
- * IDs of all projects the user can see (all projects for global admins,
- * member projects otherwise).
- */
-const getAccessibleProjectIds = async (user: User): Promise<string[]> => {
+// IDs of all projects the user can see (all projects for global admins, member projects otherwise).
+const getAccessibleProjectIds = async (user: UserI): Promise<string[]> => {
   const memberships = await db.query.projectMembers.findMany({
     where: eq(projectMembers.userId, user.id),
     columns: { projectId: true },

@@ -49,17 +49,14 @@ const decrypt = (encryptedText: string): string => {
   return decrypted;
 };
 
-// Encrypt a Record of env vars to store in DB
 const encryptEnvVars = (vars: Record<string, string>): string => {
   return encrypt(JSON.stringify(vars));
 };
 
-//Decrypt env vars from DB
 const decryptEnvVars = (encrypted: string): Record<string, string> => {
   return JSON.parse(decrypt(encrypted));
 };
 
-// Generate a secure random password
 const generatePassword = (length = 24): string => {
   return randomBytes(length).toString("base64url").slice(0, length);
 };

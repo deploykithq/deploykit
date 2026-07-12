@@ -7,7 +7,7 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 
-export const containerLogs = pgTable(
+const containerLogs = pgTable(
   "container_logs",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -26,5 +26,7 @@ export const containerLogs = pgTable(
   ],
 );
 
-export type ContainerLogRow = typeof containerLogs.$inferSelect;
-export type NewContainerLogRow = typeof containerLogs.$inferInsert;
+type ContainerLogRowT = typeof containerLogs.$inferSelect;
+type NewContainerLogRowT = typeof containerLogs.$inferInsert;
+
+export { containerLogs, type ContainerLogRowT, type NewContainerLogRowT };

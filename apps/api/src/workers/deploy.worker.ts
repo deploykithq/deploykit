@@ -9,14 +9,15 @@ import { applications, deployments } from "../db/schema/index";
 import { GitService } from "../services/git";
 import { BuildService } from "../services/build";
 import { DockerService } from "../services/docker";
+import { fireNotification } from "../services/notifier";
 import { getDockerForServer } from "../services/docker-factory";
 import { RemoteDockerService } from "../services/remote-docker";
-import { fireNotification } from "../services/notifier";
+import { scanImage, scanConfig } from "../services/trivy-scanner";
 
-import { decrypt, decryptEnvVars } from "../lib/encryption";
 import { redis } from "../lib/redis";
-import { emitDeployLog, emitDeployStatus } from "../lib/socket";
 import { redactSecrets } from "../lib/redact";
+import { decrypt, decryptEnvVars } from "../lib/encryption";
+import { emitDeployLog, emitDeployStatus } from "../lib/socket";
 
 import type { BuildType } from "@deploykit/shared";
 
@@ -48,7 +49,7 @@ const gitService = new GitService();
 const buildService = new BuildService();
 const localDockerService = new DockerService();
 
-export function startDeployWorker() {
+export const startDeployWorker = () => {
   const worker = new Worker<DeployJobData>(
     "deploy",
     async (job: Job<DeployJobData>) => {
@@ -61,7 +62,7 @@ export function startDeployWorker() {
       };
 
       try {
-        // 1. Load application data
+        // Load application data
         log("Loading application configuration...\n");
 
         const app = await db.query.applications.findFirst({
@@ -92,7 +93,7 @@ export function startDeployWorker() {
         });
         emitDeployStatus(deploymentId, "building", { applicationId });
 
-        // 2. Clone & Build
+        // Clone & Build
         let imageTag: string;
         let commitHash = "latest";
         let commitMessage = "";
@@ -105,9 +106,10 @@ export function startDeployWorker() {
         const envList = Object.entries(envVars).map(([k, v]) => `${k}=${v}`);
 
         if (app.sourceType === "docker_image") {
-          // Docker image — just pull
           log(`Pulling image: ${app.repositoryUrl}\n`);
+
           await dockerService.pullImage(app.repositoryUrl!);
+
           imageTag = app.repositoryUrl!;
         } else if (isRemote) {
           // Remote: clone + build on the remote server
@@ -160,7 +162,6 @@ export function startDeployWorker() {
             app.buildArgs || {},
           );
 
-          // Cleanup build dir
           await remoteDocker.cleanup(remoteBuildPath);
         } else {
           // Local: existing flow
@@ -210,13 +211,49 @@ export function startDeployWorker() {
           });
         }
 
-        // 3. Deploy container
+        // Vulnerability scan (advisory — never blocks the deploy).
+        // Resolve per-app toggle, falling back to the global SCAN_ENABLED default.
+        const scanEnabled = app.scanEnabled ?? scanConfig.enabledByDefault;
+        if (!scanEnabled) {
+          // leave scan columns null
+        } else if (isRemote) {
+          // Local-first: the image lives on the remote daemon, out of reach here.
+          await updateDeployment(deploymentId, { scanStatus: "skipped" });
+          log("\nVulnerability scan skipped (remote server).\n");
+        } else {
+          log("\n── Scanning image for vulnerabilities ──────\n");
+          await updateDeployment(deploymentId, { scanStatus: "scanning" });
+          try {
+            const res = await scanImage({
+              imageTag,
+              onLog: log,
+              timeoutMs: scanConfig.timeoutMs,
+            });
+            const s = res.summary;
+            log(
+              `Scan: ${s.critical} critical, ${s.high} high, ${s.medium} medium, ${s.low} low\n`,
+            );
+            await updateDeployment(deploymentId, {
+              scanStatus: res.status,
+              scanResults: { summary: s, top: res.top, scannedAt: Date.now() },
+              scanFinishedAt: new Date(),
+            });
+          } catch (scanErr: any) {
+            // Advisory: a scan failure must not abort the deploy.
+            log(`Vulnerability scan errored: ${scanErr.message}\n`);
+            await updateDeployment(deploymentId, {
+              scanStatus: "error",
+              scanFinishedAt: new Date(),
+            });
+          }
+        }
+
+        // Deploy container
         await updateDeployment(deploymentId, { status: "deploying" });
         emitDeployStatus(deploymentId, "deploying", { applicationId });
         log("\n── Deploying ──────────────────────────────────\n");
 
-        // Stop old container(s). Remove every replica of this service by
-        // label so a scale-down doesn't leave orphans behind.
+        // Stop old container(s). Remove every replica of this service by label so a scale-down doesn't leave orphans behind.
         log("Stopping previous container(s)...\n");
         try {
           await dockerService.removeServiceContainers(app.id);
@@ -300,7 +337,7 @@ export function startDeployWorker() {
 
         log(`Container started: ${containerId}\n`);
 
-        // 4. Health check
+        // Health check
         log("\n── Health check ───────────────────────────────\n");
         const hcResult = await healthCheck({
           type: app.healthCheckType ?? "http",
@@ -322,7 +359,7 @@ export function startDeployWorker() {
             );
           }
           log(
-            `⚠️  Health check failed — container is running but may not be ready.\n`,
+            `⚠️ Health check failed — container is running but may not be ready.\n`,
           );
         } else {
           log(
@@ -330,7 +367,7 @@ export function startDeployWorker() {
           );
         }
 
-        // 5. Update records
+        // Update records
         await db
           .update(applications)
           .set({

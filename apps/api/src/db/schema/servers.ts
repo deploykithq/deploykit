@@ -9,10 +9,11 @@ import {
   bigint,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { applications } from "./applications";
-import { databases } from "./databases";
 
-export const servers = pgTable("servers", {
+import { databases } from "./databases";
+import { applications } from "./applications";
+
+const servers = pgTable("servers", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
   host: varchar("host", { length: 255 }).notNull(),
@@ -34,10 +35,12 @@ export const servers = pgTable("servers", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const serverRelations = relations(servers, ({ many }) => ({
+const serverRelations = relations(servers, ({ many }) => ({
   applications: many(applications),
   databases: many(databases),
 }));
 
-export type Server = typeof servers.$inferSelect;
-export type NewServer = typeof servers.$inferInsert;
+type ServerT = typeof servers.$inferSelect;
+type NewServerT = typeof servers.$inferInsert;
+
+export { servers, serverRelations, type ServerT, type NewServerT };

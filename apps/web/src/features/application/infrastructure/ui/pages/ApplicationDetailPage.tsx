@@ -25,6 +25,7 @@ import {
   LogsTab,
   MonitoringTab,
   PreviewsTab,
+  SecurityTab,
 } from "@application/infrastructure/ui/components";
 
 const TerminalTab = lazy(() =>
@@ -230,6 +231,9 @@ export const ApplicationDetailPage = () => {
         )}
         {activeTab === "monitoring" && (
           <MonitoringTab app={app} applicationId={applicationId} />
+        )}
+        {activeTab === "security" && (
+          <SecurityTab applicationId={applicationId} />
         )}
         {activeTab === "previews" && (
           <PreviewsTab app={app} applicationId={applicationId} />

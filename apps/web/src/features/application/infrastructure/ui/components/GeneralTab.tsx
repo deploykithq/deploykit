@@ -1,5 +1,12 @@
 import { memo, useState } from "react";
-import { Lock, HardDrive, GitBranch, Cpu, TrendingUp } from "lucide-react";
+import {
+  Lock,
+  HardDrive,
+  GitBranch,
+  Cpu,
+  TrendingUp,
+  ShieldCheck,
+} from "lucide-react";
 
 import { Card, Button, Input, Select } from "@shared/components";
 import { CopyableField } from "@application/infrastructure/ui/components/CopyableField";
@@ -91,6 +98,11 @@ export const GeneralTab: React.FC<GeneralTabPropsI> = memo(function GeneralTab({
   );
   const [previewDomain, setPreviewDomain] = useState(app.previewDomain ?? "");
 
+  // Security scanning (tri-state: inherit global default / on / off)
+  const [scanMode, setScanMode] = useState<"default" | "on" | "off">(
+    app.scanEnabled == null ? "default" : app.scanEnabled ? "on" : "off",
+  );
+
   const handleSave = () =>
     updateMutation.mutate({
       id: applicationId,
@@ -127,6 +139,7 @@ export const GeneralTab: React.FC<GeneralTabPropsI> = memo(function GeneralTab({
       healthCheckRequired: hcRequired,
       previewEnabled,
       previewDomain: previewDomain || null,
+      scanEnabled: scanMode === "default" ? null : scanMode === "on",
     });
 
   return (
@@ -554,6 +567,32 @@ export const GeneralTab: React.FC<GeneralTabPropsI> = memo(function GeneralTab({
               "Opens a TCP connection to the configured port. Useful for databases or non-HTTP services."}
             {hcType === "none" &&
               "The container will be marked running immediately after starting."}
+          </p>
+        </section>
+
+        {/* Security Scanning */}
+        <section className="space-y-3 pt-4 border-t border-border">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted flex items-center gap-1.5">
+            <ShieldCheck className="w-3 h-3" />
+            Security Scanning
+          </h3>
+
+          <Select
+            label="Image vulnerability scan"
+            value={scanMode}
+            onChange={(e) =>
+              setScanMode(e.target.value as "default" | "on" | "off")
+            }
+            options={[
+              { value: "default", label: "Use server default" },
+              { value: "on", label: "Always scan" },
+              { value: "off", label: "Never scan" },
+            ]}
+          />
+          <p className="text-[11px] text-text-muted">
+            Scans the built image with Trivy after each build (advisory — results
+            appear on the deployment, the deploy is never blocked). Local servers
+            only.
           </p>
         </section>
 

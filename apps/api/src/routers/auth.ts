@@ -3,10 +3,11 @@ import { eq } from "drizzle-orm";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 
+import { router, publicProcedure, protectedProcedure } from "../trpc";
+
 import { users } from "../db/schema/index";
 
-import { router, publicProcedure, protectedProcedure } from "../trpc";
-import { logAction } from "../lib/audit";
+import { logAction } from "../lib/audit/audit";
 import { refreshTokenStore } from "../lib/redis";
 
 export const authRouter = router({
@@ -45,7 +46,10 @@ export const authRouter = router({
 
       const tokens = generateTokens(user!.id);
       await refreshTokenStore.set(tokens.refreshToken, user!.id);
-      await logAction({ db: ctx.db, user: user!, ip: ctx.ip }, { action: "auth.register" });
+      await logAction(
+        { db: ctx.db, user: user!, ip: ctx.ip },
+        { action: "auth.register" },
+      );
       return { user: sanitizeUser(user!), ...tokens };
     }),
 
@@ -67,7 +71,10 @@ export const authRouter = router({
 
       const tokens = generateTokens(user.id);
       await refreshTokenStore.set(tokens.refreshToken, user.id);
-      await logAction({ db: ctx.db, user, ip: ctx.ip }, { action: "auth.login" });
+      await logAction(
+        { db: ctx.db, user, ip: ctx.ip },
+        { action: "auth.login" },
+      );
       return { user: sanitizeUser(user), ...tokens };
     }),
 

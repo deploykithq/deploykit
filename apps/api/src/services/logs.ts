@@ -1,7 +1,7 @@
 import { docker } from "../lib/docker";
 import { emitContainerLog } from "../lib/socket";
 import { db } from "../db/index";
-import { containerLogs, type NewContainerLogRow } from "../db/schema/index";
+import { containerLogs, type NewContainerLogRowT } from "../db/schema/index";
 import { redactSecrets } from "../lib/redact";
 
 // Single-owner container log stream manager.
@@ -29,7 +29,7 @@ const streamMeta = new Map<string, StreamMeta>();
 const LINE_MAX = 8000; // cap a single persisted line at 8 KB
 const LOG_BUFFER_MAX = Number(process.env.LOG_BUFFER_MAX) || 5000;
 
-let logBuffer: NewContainerLogRow[] = [];
+let logBuffer: NewContainerLogRowT[] = [];
 let droppedSinceWarn = 0;
 
 // Ensure a follow-stream exists for a container. If `meta` is provided, lines are
@@ -109,7 +109,7 @@ const activeStreamIds = (): string[] => [...activeStreams.keys()];
 const isCollected = (containerId: string): boolean =>
   streamMeta.has(containerId);
 
-const bufferLog = (row: NewContainerLogRow): void => {
+const bufferLog = (row: NewContainerLogRowT): void => {
   if (logBuffer.length >= LOG_BUFFER_MAX) {
     // Backpressure: drop the oldest lines so a noisy container can't OOM us.
     logBuffer.shift();

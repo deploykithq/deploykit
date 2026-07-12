@@ -7,13 +7,10 @@ import {
   index,
   text,
 } from "drizzle-orm/pg-core";
+
 import { alertRules } from "./alert-rules";
 
-// Alert events
-// Fired every time a rule transitions from ok → firing.
-// resolvedAt is set when the metric drops back below threshold.
-
-export const alertEvents = pgTable(
+const alertEvents = pgTable(
   "alert_events",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -36,4 +33,6 @@ export const alertEvents = pgTable(
   ],
 );
 
-export type AlertEvent = typeof alertEvents.$inferSelect;
+type AlertEventT = typeof alertEvents.$inferSelect;
+
+export { alertEvents, type AlertEventT };

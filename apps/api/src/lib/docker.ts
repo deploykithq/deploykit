@@ -51,7 +51,6 @@ const connectToNetwork = async (
   try {
     await network.connect({ Container: containerId });
   } catch (err: any) {
-    // Already connected - ignore
     if (!err.message?.includes("already exists")) throw err;
   }
 };

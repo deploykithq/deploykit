@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { users } from "../db/schema/index";
 
 import { router, adminProcedure } from "../trpc";
-import { logAction } from "../lib/audit";
+import { logAction } from "../lib/audit/audit";
 
 import { createUserSchema, updateUserRoleSchema } from "@deploykit/shared";
 

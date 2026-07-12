@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { desc, and, eq, gte, lte, like, or } from "drizzle-orm";
 
-import { auditLogs } from "../db/schema/index";
 import { router, adminProcedure } from "../trpc";
+
+import { auditLogs } from "../db/schema/index";
 
 const PAGE_SIZE = 50;
 

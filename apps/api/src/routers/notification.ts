@@ -1,19 +1,18 @@
 import { z } from "zod";
-import { eq, and, isNull, desc } from "drizzle-orm";
+import { eq, isNull, desc } from "drizzle-orm";
 
 import { TRPCError } from "@trpc/server";
 
-import { notificationChannels, NOTIFICATION_EVENTS } from "../db/schema/index";
+import { router, protectedProcedure, operatorProcedure } from "../trpc";
+
 import { sendTestNotification } from "../services/notifier";
-import { logAction } from "../lib/audit";
-import { getProjectRole, canViewSecrets } from "../lib/permissions";
+
+import { notificationChannels, NOTIFICATION_EVENTS } from "../db/schema/index";
+
+import { logAction } from "../lib/audit/audit";
 import { isLiterallyPublicUrl } from "../lib/ssrf";
-import {
-  router,
-  protectedProcedure,
-  operatorProcedure,
-  adminProcedure,
-} from "../trpc";
+import { getProjectRole, canViewSecrets } from "../lib/permissions";
+
 import type { Context } from "../trpc";
 
 /**
