@@ -107,6 +107,27 @@ export class DockerService {
   }
 
   /**
+   * Real mounts on a container as reported by the daemon. Used after start to
+   * verify that every configured volume was actually applied.
+   */
+  async getContainerMounts(containerId: string): Promise<
+    Array<{
+      source: string;
+      destination: string;
+      name?: string;
+      rw: boolean;
+    }>
+  > {
+    const info = await docker.getContainer(containerId).inspect();
+    return ((info as any).Mounts || []).map((m: any) => ({
+      source: m.Source || "",
+      destination: m.Destination || "",
+      name: m.Name,
+      rw: m.RW !== false,
+    }));
+  }
+
+  /**
    * Deploy an application container with Traefik labels for routing
    */
   async deployApp(opts: {

@@ -8,11 +8,9 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
+
 import { projects } from "./projects";
 
-// Notification channels
-// A channel is a destination (Discord, Slack, Telegram, Email, Webhook)
-// scoped to a project (or global when projectId is null).
 
 export const notificationChannels = pgTable(
   "notification_channels",

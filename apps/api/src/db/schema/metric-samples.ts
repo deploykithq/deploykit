@@ -10,7 +10,7 @@ import {
   unique,
 } from "drizzle-orm/pg-core";
 
-export const metricSamples = pgTable(
+const metricSamples = pgTable(
   "metric_samples",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -29,18 +29,12 @@ export const metricSamples = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (t) => [
-    unique("metric_samples_bucket_uq").on(
-      t.serviceId,
-      t.resolution,
-      t.bucket,
-    ),
-    index("metric_samples_lookup_idx").on(
-      t.serviceId,
-      t.resolution,
-      t.bucket,
-    ),
+    unique("metric_samples_bucket_uq").on(t.serviceId, t.resolution, t.bucket),
+    index("metric_samples_lookup_idx").on(t.serviceId, t.resolution, t.bucket),
   ],
 );
 
-export type MetricSampleRow = typeof metricSamples.$inferSelect;
-export type NewMetricSampleRow = typeof metricSamples.$inferInsert;
+type MetricSampleRowT = typeof metricSamples.$inferSelect;
+type NewMetricSampleRowT = typeof metricSamples.$inferInsert;
+
+export { metricSamples, type MetricSampleRowT, type NewMetricSampleRowT };

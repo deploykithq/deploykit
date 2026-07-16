@@ -1,18 +1,15 @@
 import { z } from "zod";
-import { TRPCError } from "@trpc/server";
-import { eq } from "drizzle-orm";
-import { execSync, execFile } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import { eq } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
+import { execFile } from "child_process";
 
 import { databases } from "../db/schema/index";
 
 import { getDockerForServer } from "../services/docker-factory";
 import { router, protectedProcedure } from "../trpc";
 
-import { backupQueue } from "../lib/redis";
-import { generatePassword, encrypt, decrypt } from "../lib/encryption";
-import { logAction } from "../lib/audit";
 import {
   getProjectRole,
   getProjectRoleByDbId,
@@ -20,8 +17,12 @@ import {
   isAdmin,
   canViewSecrets,
 } from "../lib/permissions";
+import { backupQueue } from "../lib/redis";
+import { logAction } from "../lib/audit/audit";
+import { generatePassword, encrypt, decrypt } from "../lib/encryption";
 
 import { createDatabaseSchema, DATABASE_IMAGES } from "@deploykit/shared";
+
 import type { DatabaseType } from "@deploykit/shared";
 
 export const databaseRouter = router({
@@ -31,6 +32,7 @@ export const databaseRouter = router({
       const db = await ctx.db.query.databases.findFirst({
         where: eq(databases.id, input.id),
       });
+
       if (!db)
         throw new TRPCError({
           code: "NOT_FOUND",
@@ -43,8 +45,10 @@ export const databaseRouter = router({
           code: "NOT_FOUND",
           message: "Database not found",
         });
+
       const canView = canViewSecrets(projectRole);
       let connectionString = "";
+
       if (canView) {
         const password = db.dbPassword ? decrypt(db.dbPassword) : "";
         connectionString = buildConnectionString(
@@ -71,11 +75,13 @@ export const databaseRouter = router({
     .input(createDatabaseSchema)
     .mutation(async ({ ctx, input }) => {
       const createRole = await getProjectRole(ctx.user, input.projectId);
+
       if (!canOperate(createRole))
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "Operator access required for this project",
         });
+
       const imageConfig = DATABASE_IMAGES[input.type];
       const password = generatePassword();
       const containerName = `dk-${input.name}`;
@@ -138,9 +144,7 @@ export const databaseRouter = router({
       });
 
       // Initialize the replica set after container is running
-      if (enableReplicaSet) {
-        await initMongoReplicaSet(containerName, password);
-      }
+      if (enableReplicaSet) await initMongoReplicaSet(containerName, password);
 
       // Update record with container ID
       await ctx.db
@@ -175,17 +179,21 @@ export const databaseRouter = router({
       const database = await ctx.db.query.databases.findFirst({
         where: eq(databases.id, input.id),
       });
+
       if (!database)
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Database not found",
         });
+
       const deleteRole = await getProjectRole(ctx.user, database.projectId);
+
       if (!isAdmin(deleteRole))
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "Admin access required for this project",
         });
+
       if (database.containerId) {
         try {
           const { docker } = await getDockerForServer(database.serverId);
@@ -194,7 +202,9 @@ export const databaseRouter = router({
           // Container might not exist
         }
       }
+
       await ctx.db.delete(databases).where(eq(databases.id, input.id));
+
       await logAction(ctx, {
         action: "database.delete",
         resourceType: "database",
@@ -202,6 +212,7 @@ export const databaseRouter = router({
         resourceName: database?.name,
         metadata: { type: database?.type },
       });
+
       return { success: true };
     }),
 
@@ -211,29 +222,37 @@ export const databaseRouter = router({
       const database = await ctx.db.query.databases.findFirst({
         where: eq(databases.id, input.id),
       });
+
       if (!database?.containerId)
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "No running container",
         });
+
       const startRole = await getProjectRole(ctx.user, database.projectId);
+
       if (!canOperate(startRole))
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "Operator access required for this project",
         });
+
       const { docker } = await getDockerForServer(database.serverId);
+
       await docker.start(database.containerId);
+
       await ctx.db
         .update(databases)
         .set({ status: "running" })
         .where(eq(databases.id, input.id));
+
       await logAction(ctx, {
         action: "database.restart",
         resourceType: "database",
         resourceId: database.id,
         resourceName: database.name,
       });
+
       return { success: true };
     }),
 
@@ -243,29 +262,37 @@ export const databaseRouter = router({
       const database = await ctx.db.query.databases.findFirst({
         where: eq(databases.id, input.id),
       });
+
       if (!database?.containerId)
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "No running container",
         });
+
       const stopRole = await getProjectRole(ctx.user, database.projectId);
+
       if (!canOperate(stopRole))
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "Operator access required for this project",
         });
+
       const { docker } = await getDockerForServer(database.serverId);
+
       await docker.stop(database.containerId);
+
       await ctx.db
         .update(databases)
         .set({ status: "stopped" })
         .where(eq(databases.id, input.id));
+
       await logAction(ctx, {
         action: "database.stop",
         resourceType: "database",
         resourceId: database.id,
         resourceName: database.name,
       });
+
       return { success: true };
     }),
 
@@ -275,7 +302,20 @@ export const databaseRouter = router({
       const database = await ctx.db.query.databases.findFirst({
         where: eq(databases.id, input.id),
       });
-      if (!database?.containerId) return null;
+
+      // Authorization: only project members may read live stats.
+      const role = database
+        ? await getProjectRole(ctx.user, database.projectId)
+        : null;
+
+      if (!database || !role)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Database not found",
+        });
+
+      if (!database.containerId) return null;
+
       try {
         const { docker } = await getDockerForServer(database.serverId);
         return await docker.getStats(database.containerId);
@@ -295,17 +335,20 @@ export const databaseRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
+
       const backupRole = await getProjectRoleByDbId(ctx.user, id);
       if (!canOperate(backupRole))
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "Operator access required for this project",
         });
+
       const [database] = await ctx.db
         .update(databases)
         .set(data)
         .where(eq(databases.id, id))
         .returning();
+
       await logAction(ctx, {
         action: "database.update_backup_config",
         resourceType: "database",
@@ -313,6 +356,7 @@ export const databaseRouter = router({
         resourceName: database!.name,
         metadata: data,
       });
+
       return database!;
     }),
 
@@ -322,18 +366,22 @@ export const databaseRouter = router({
       const database = await ctx.db.query.databases.findFirst({
         where: eq(databases.id, input.id),
       });
+
       if (!database)
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Database not found",
         });
+
       const triggerRole = await getProjectRole(ctx.user, database.projectId);
       if (!canOperate(triggerRole))
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "Operator access required for this project",
         });
+
       await backupQueue.add("backup", { databaseId: database.id });
+
       await logAction(ctx, {
         action: "database.backup",
         resourceType: "database",
@@ -341,6 +389,7 @@ export const databaseRouter = router({
         resourceName: database.name,
         metadata: { manual: true },
       });
+
       return { success: true };
     }),
 
@@ -350,16 +399,24 @@ export const databaseRouter = router({
       const database = await ctx.db.query.databases.findFirst({
         where: eq(databases.id, input.id),
       });
-      if (!database)
+
+      // Authorization: backup listings are restricted to project members.
+      const role = database
+        ? await getProjectRole(ctx.user, database.projectId)
+        : null;
+
+      if (!database || !role)
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Database not found",
         });
 
       const backupDir = `/var/backups/deploykit/${database.name}`;
+
       try {
         if (!fs.existsSync(backupDir)) return [];
         const files = fs.readdirSync(backupDir);
+
         return files
           .map((filename) => {
             const filePath = path.join(backupDir, filename);
@@ -387,6 +444,7 @@ export const databaseRouter = router({
       const database = await ctx.db.query.databases.findFirst({
         where: eq(databases.id, input.id),
       });
+
       if (!database)
         throw new TRPCError({
           code: "NOT_FOUND",
@@ -421,6 +479,7 @@ export const databaseRouter = router({
       const database = await ctx.db.query.databases.findFirst({
         where: eq(databases.id, input.id),
       });
+
       if (!database)
         throw new TRPCError({
           code: "NOT_FOUND",
@@ -438,6 +497,7 @@ export const databaseRouter = router({
         `/var/backups/deploykit/${database.name}`,
         path.basename(input.filename),
       );
+
       if (!fs.existsSync(filePath)) {
         throw new TRPCError({
           code: "NOT_FOUND",
@@ -446,6 +506,7 @@ export const databaseRouter = router({
       }
 
       const containerName = `dk-${database.name}`;
+
       await runRestore(
         database.type as DatabaseType,
         containerName,
@@ -588,13 +649,29 @@ const initMongoReplicaSet = (
   });
 };
 
-const runRestore = (
+/**
+ * Run a shell pipeline asynchronously. Never use execSync here: it freezes
+ * the whole Node event loop (HTTP, Socket.IO, and BullMQ lock renewal — a
+ * blocked renewal makes an in-flight deploy job re-run in parallel with
+ * itself).
+ */
+const runShell = (cmd: string, timeoutMs: number): Promise<void> =>
+  new Promise((resolve, reject) => {
+    execFile(
+      "/bin/sh",
+      ["-c", cmd],
+      { timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 },
+      (error) => (error ? reject(error) : resolve()),
+    );
+  });
+
+const runRestore = async (
   type: DatabaseType,
   containerName: string,
   filePath: string,
   user: string,
   dbName: string,
-): void => {
+): Promise<void> => {
   // Sanitize all values before passing to shell
   const c = shellSafe(containerName);
   const f = shellSafe(filePath);
@@ -603,25 +680,27 @@ const runRestore = (
 
   switch (type) {
     case "postgresql":
-      execSync(`gunzip -c ${f} | docker exec -i ${c} psql -U ${u} -d ${d}`, {
-        timeout: 300_000,
-      });
+      await runShell(
+        `gunzip -c ${f} | docker exec -i ${c} psql -U ${u} -d ${d}`,
+        300_000,
+      );
       break;
     case "mongodb":
-      execSync(
+      await runShell(
         `cat ${f} | docker exec -i ${c} mongorestore --archive --gzip --drop`,
-        { timeout: 300_000 },
+        300_000,
       );
       break;
     case "mysql":
     case "mariadb":
-      execSync(`gunzip -c ${f} | docker exec -i ${c} mysql -u ${u} ${d}`, {
-        timeout: 300_000,
-      });
+      await runShell(
+        `gunzip -c ${f} | docker exec -i ${c} mysql -u ${u} ${d}`,
+        300_000,
+      );
       break;
     case "redis":
-      execSync(`docker cp ${f} ${c}:/data/dump.rdb`);
-      execSync(`docker restart ${c}`);
+      await runShell(`docker cp ${f} ${c}:/data/dump.rdb`, 300_000);
+      await runShell(`docker restart ${c}`, 60_000);
       break;
   }
 };

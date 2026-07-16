@@ -2,15 +2,18 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { eq, desc, asc, and, gte, isNull } from "drizzle-orm";
 
-import { alertRules, alertEvents, metricSamples } from "../db/schema/index";
-import { getHistory } from "../services/metrics";
-import { canViewService } from "../lib/socket-auth";
 import {
   router,
   protectedProcedure,
   operatorProcedure,
   adminProcedure,
 } from "../trpc";
+
+import { getHistory } from "../services/metrics";
+
+import { alertRules, alertEvents, metricSamples } from "../db/schema/index";
+
+import { canViewService } from "../lib/socket-auth";
 
 // Shared validators
 const metricEnum = z.enum(["cpu", "memory", "net_rx", "net_tx"]);
@@ -29,13 +32,16 @@ const RANGE_MS: Record<z.infer<typeof rangeEnum>, number> = {
 };
 
 export const metricsRouter = router({
-  // Returns the last ~60 samples (30 min at 30s intervals)
   history: protectedProcedure
     .input(z.object({ serviceId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       if (!(await canViewService(ctx.user, input.serviceId))) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Service not found" });
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Service not found",
+        });
       }
+
       return getHistory(input.serviceId);
     }),
 
@@ -50,7 +56,10 @@ export const metricsRouter = router({
     )
     .query(async ({ ctx, input }) => {
       if (!(await canViewService(ctx.user, input.serviceId))) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Service not found" });
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Service not found",
+        });
       }
 
       const rangeMs = RANGE_MS[input.range];
@@ -122,6 +131,7 @@ export const metricsRouter = router({
           orderBy: [desc(alertRules.createdAt)],
         });
       }
+
       return ctx.db.query.alertRules.findMany({
         orderBy: [desc(alertRules.createdAt)],
       });
@@ -166,6 +176,7 @@ export const metricsRouter = router({
         .set({ ...data, updatedAt: new Date() })
         .where(eq(alertRules.id, id))
         .returning();
+
       return rule!;
     }),
 
@@ -173,6 +184,7 @@ export const metricsRouter = router({
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       await ctx.db.delete(alertRules).where(eq(alertRules.id, input.id));
+
       return { success: true };
     }),
 
@@ -188,9 +200,11 @@ export const metricsRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const conditions = [];
+      
       if (input?.serviceId) {
         conditions.push(eq(alertEvents.serviceId, input.serviceId));
       }
+      
       if (input?.onlyOpen) {
         conditions.push(isNull(alertEvents.resolvedAt));
       }
@@ -209,6 +223,7 @@ export const metricsRouter = router({
       ctx.db.$count(alertEvents),
       ctx.db.$count(alertRules, eq(alertRules.enabled, true)),
     ]);
+
     return {
       openAlerts: Number(open),
       totalEvents: Number(total),

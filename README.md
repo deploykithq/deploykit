@@ -1,6 +1,8 @@
 <p align="center">
-  <h1 align="center">DeployKit</h1>
-  <p align="center">Self-hosted PaaS for deploying apps and databases on your own infrastructure.<br>Open-source alternative to Vercel and Heroku.</p>
+  <a href="https://dokploy.com">
+    <img src=".github/images/banner.png" alt="Dokploy - Open Source Alternative to Vercel, Heroku and Netlify." width="100%"  />
+  </a>
+  <p align="center">Self-hosted PaaS for deploying apps and databases on your own infrastructure.<br>Open-source alternative to Vercel, Netlify and Heroku.</p>
 </p>
 
 <p align="center">
@@ -16,41 +18,59 @@
 
 ## Installation
 
-One command on any VPS (Ubuntu/Debian/RHEL):
+DeployKit is installed and managed with the [`@deploykit/cli`](https://github.com/deploykithq/deploykit-cli) command-line tool. Install it on your VPS (Ubuntu/Debian/RHEL/Alpine) with Node.js >= 20:
 
 ```bash
-curl -fsSL https://get.deploykit.es | sh
+npm install -g @deploykit/cli
+sudo deploykit install --domain deploy.example.com --email you@example.com
 ```
 
-With options:
+Or run it one-shot via `npx`, no global install:
 
 ```bash
-curl -fsSL https://get.deploykit.es | sh -s -- \
+sudo npx @deploykit/cli install --domain deploy.example.com --email you@example.com
+```
+
+With all options:
+
+```bash
+sudo deploykit install \
   --domain deploy.example.com \
   --email you@example.com \
   --admin-email admin@example.com \
   --admin-password yourpassword
 ```
 
-The installer will:
+Run `deploykit install` with no `--domain`/`--email` in a terminal to drop into interactive prompts.
+
+The CLI will:
 1. Install Docker and Docker Compose (if not present)
 2. Clone DeployKit to `/opt/deploykit`
 3. Generate all secrets (JWT, encryption keys)
 4. Start all services behind Traefik with auto-SSL
 5. Create your admin account
 
-**Requirements:** Linux VPS with 1 vCPU, 1 GB RAM, 10 GB disk, and ports 80/443 open.
+**Requirements:** Linux VPS with 1 vCPU, 1 GB RAM, 10 GB disk, Node.js >= 20, and ports 80/443 open.
 
 ### Update
 
 ```bash
-cd /opt/deploykit && ./update.sh
+sudo deploykit update
+```
+
+### Other commands
+
+```bash
+deploykit status      # list running containers
+deploykit logs        # stream live logs
+sudo deploykit restart # restart all services
 ```
 
 ### Uninstall
 
 ```bash
-cd /opt/deploykit && ./uninstall.sh
+sudo deploykit uninstall --yes                # keep data volumes
+sudo deploykit uninstall --yes --delete-data  # also wipe Postgres/Redis volumes and backups
 ```
 
 User-deployed containers are not affected by uninstall.
@@ -77,6 +97,9 @@ User-deployed containers are not affected by uninstall.
 | **Rollbacks** | One-click rollback to any previous deployment |
 | **Audit Logs** | Full action history with automatic retention cleanup |
 | **Notifications** | Discord, Slack, Telegram, Email, and Webhook channels |
+| **Templates** | Select from a variety of ready-to-deploy templates from different services |
+| **Autoscaling** | Automatically scale replicas by average CPU/memory load |
+| **Status Page** | Publish a public, no-login status page showing the live state and uptime of selected applications in this project. |
 
 ---
 

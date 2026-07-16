@@ -9,12 +9,13 @@ import {
   timestamp,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { projects } from "./projects";
-import { servers } from "./servers";
-import { deployments } from "./deployments";
-import { domains } from "./domains";
 
-export const applications = pgTable("applications", {
+import { servers } from "./servers";
+import { domains } from "./domains";
+import { projects } from "./projects";
+import { deployments } from "./deployments";
+
+const applications = pgTable("applications", {
   id: uuid("id").defaultRandom().primaryKey(),
   projectId: uuid("project_id")
     .references(() => projects.id, { onDelete: "cascade" })
@@ -76,6 +77,8 @@ export const applications = pgTable("applications", {
     .notNull(),
   // Public status page visibility (opt-in per app; project must also enable it)
   statusPageVisible: boolean("status_page_visible").default(false).notNull(),
+  // Image vulnerability scanning: null = inherit global SCAN_ENABLED default
+  scanEnabled: boolean("scan_enabled"),
   // Preview deployments
   previewEnabled: boolean("preview_enabled").default(false).notNull(), // parent: enables PR previews
   previewDomain: varchar("preview_domain", { length: 255 }), // base domain, e.g. "example.com"
@@ -88,31 +91,35 @@ export const applications = pgTable("applications", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const applicationRelations = relations(
-  applications,
-  ({ one, many }) => ({
-    project: one(projects, {
-      fields: [applications.projectId],
-      references: [projects.id],
-    }),
-    server: one(servers, {
-      fields: [applications.serverId],
-      references: [servers.id],
-    }),
-    deployments: many(deployments),
-    domains: many(domains),
-    // Self-referencing: preview → parent
-    parentApplication: one(applications, {
-      fields: [applications.parentApplicationId],
-      references: [applications.id],
-      relationName: "preview_parent",
-    }),
-    // Self-referencing: parent → previews
-    previews: many(applications, {
-      relationName: "preview_parent",
-    }),
+const applicationRelations = relations(applications, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [applications.projectId],
+    references: [projects.id],
   }),
-);
+  server: one(servers, {
+    fields: [applications.serverId],
+    references: [servers.id],
+  }),
+  deployments: many(deployments),
+  domains: many(domains),
+  // Self-referencing: preview → parent
+  parentApplication: one(applications, {
+    fields: [applications.parentApplicationId],
+    references: [applications.id],
+    relationName: "preview_parent",
+  }),
+  // Self-referencing: parent → previews
+  previews: many(applications, {
+    relationName: "preview_parent",
+  }),
+}));
 
-export type Application = typeof applications.$inferSelect;
-export type NewApplication = typeof applications.$inferInsert;
+type ApplicationT = typeof applications.$inferSelect;
+type NewApplicationT = typeof applications.$inferInsert;
+
+export {
+  applications,
+  applicationRelations,
+  type ApplicationT,
+  type NewApplicationT,
+};

@@ -1,5 +1,7 @@
 import { desc, gte, isNull, inArray, and } from "drizzle-orm";
 
+import { router, protectedProcedure } from "../trpc";
+
 import {
   projects,
   deployments,
@@ -7,7 +9,7 @@ import {
   auditLogs,
   alertEvents,
 } from "../db/schema/index";
-import { router, protectedProcedure } from "../trpc";
+
 import { getAccessibleProjectIds } from "../lib/permissions";
 
 export const dashboardRouter = router({

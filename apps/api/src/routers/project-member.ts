@@ -1,28 +1,28 @@
 import { z } from "zod";
-import { TRPCError } from "@trpc/server";
 import { eq, and } from "drizzle-orm";
-
-import { projectMembers, users, projects } from "../db/schema/index";
-import { router, protectedProcedure } from "../trpc";
-import { logAction } from "../lib/audit";
-import { getProjectRole, isAdmin } from "../lib/permissions";
+import { TRPCError } from "@trpc/server";
 import { UserRole } from "@deploykit/shared";
 
+import { router, protectedProcedure } from "../trpc";
+
+import { projectMembers, users } from "../db/schema/index";
+
+import { logAction } from "../lib/audit/audit";
+import { getProjectRole, isAdmin } from "../lib/permissions";
+
 export const projectMemberRouter = router({
-  /**
-   * List all members of a project.
-   * Requires membership on the project (or global admin).
-   */
   list: protectedProcedure
     .input(z.object({ projectId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const callerRole = await getProjectRole(ctx.user, input.projectId);
+
       if (!callerRole) {
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "You are not a member of this project",
         });
       }
+
       const members = await ctx.db.query.projectMembers.findMany({
         where: eq(projectMembers.projectId, input.projectId),
         with: {
@@ -44,10 +44,6 @@ export const projectMemberRouter = router({
       }));
     }),
 
-  /**
-   * Add a member to a project with a specific role.
-   * Requires admin role on the project.
-   */
   add: protectedProcedure
     .input(
       z.object({
@@ -119,10 +115,6 @@ export const projectMemberRouter = router({
       return member!;
     }),
 
-  /**
-   * Update a member's role within a project.
-   * Requires admin role on the project.
-   */
   updateRole: protectedProcedure
     .input(
       z.object({
@@ -167,10 +159,6 @@ export const projectMemberRouter = router({
       return updated!;
     }),
 
-  /**
-   * Remove a member from a project.
-   * Requires admin role on the project.
-   */
   remove: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
@@ -207,10 +195,6 @@ export const projectMemberRouter = router({
       return { success: true };
     }),
 
-  /**
-   * Get the effective role for the current user on a project.
-   * Used by the frontend to determine what UI to show.
-   */
   myRole: protectedProcedure
     .input(z.object({ projectId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
@@ -218,10 +202,6 @@ export const projectMemberRouter = router({
       return { role };
     }),
 
-  /**
-   * List users available to add to a project (not already members, not global admins).
-   * Requires admin role on the project.
-   */
   availableUsers: protectedProcedure
     .input(z.object({ projectId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
@@ -238,6 +218,7 @@ export const projectMemberRouter = router({
         where: eq(projectMembers.projectId, input.projectId),
         columns: { userId: true },
       });
+
       const memberIds = new Set(existingMembers.map((m) => m.userId));
 
       // Get all non-admin users not already in the project

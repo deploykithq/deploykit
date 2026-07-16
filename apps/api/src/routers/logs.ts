@@ -2,9 +2,11 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, gte, ilike, lte } from "drizzle-orm";
 
-import { containerLogs } from "../db/schema/index";
-import { canViewService } from "../lib/socket-auth";
 import { router, protectedProcedure } from "../trpc";
+
+import { containerLogs } from "../db/schema/index";
+
+import { canViewService } from "../lib/socket-auth";
 
 const PAGE_SIZE = 100;
 const levelEnum = z.enum(["error", "warn", "info", "debug", "fatal"]);
@@ -24,7 +26,10 @@ export const logsRouter = router({
     )
     .query(async ({ ctx, input }) => {
       if (!(await canViewService(ctx.user, input.serviceId))) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Service not found" });
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Service not found",
+        });
       }
 
       const conditions = [eq(containerLogs.serviceId, input.serviceId)];

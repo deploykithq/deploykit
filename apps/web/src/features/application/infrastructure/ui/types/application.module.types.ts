@@ -6,4 +6,5 @@ export type TabT =
   | "logs"
   | "terminal"
   | "monitoring"
+  | "security"
   | "previews";

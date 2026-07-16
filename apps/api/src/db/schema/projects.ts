@@ -7,12 +7,13 @@ import {
   timestamp,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { applications } from "./applications";
-import { databases } from "./databases";
-import { notificationChannels } from "./notification-channels";
-import { projectMembers } from "./project-members";
 
-export const projects = pgTable("projects", {
+import { databases } from "./databases";
+import { applications } from "./applications";
+import { projectMembers } from "./project-members";
+import { notificationChannels } from "./notification-channels";
+
+const projects = pgTable("projects", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
@@ -25,12 +26,14 @@ export const projects = pgTable("projects", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const projectRelations = relations(projects, ({ many }) => ({
+const projectRelations = relations(projects, ({ many }) => ({
   applications: many(applications),
   databases: many(databases),
   notificationChannels: many(notificationChannels),
   members: many(projectMembers),
 }));
 
-export type Project = typeof projects.$inferSelect;
-export type NewProject = typeof projects.$inferInsert;
+type ProjectT = typeof projects.$inferSelect;
+type NewProjectT = typeof projects.$inferInsert;
+
+export { projects, projectRelations, type ProjectT, type NewProjectT };

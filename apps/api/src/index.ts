@@ -26,6 +26,7 @@ import { startAuditCleanupScheduler } from "./workers/audit-cleanup.scheduler";
 import { startLogCollector } from "./workers/log-collector.scheduler";
 import { startLogCleanupScheduler } from "./workers/log-cleanup.scheduler";
 import { WebhookService } from "./services/webhook";
+import { prewarmTrivyDb, scanConfig } from "./services/trivy-scanner";
 import { ensureLogStream, stopLogStream, isCollected } from "./services/logs";
 import { isRateLimited } from "./lib/redis";
 import { checkEnv } from "./lib/env-check";
@@ -245,6 +246,8 @@ async function main() {
   if (dockerOk) {
     server.log.info("Docker connection: OK");
     await ensureNetwork("deploykit-network");
+    // Pre-warm Trivy's vuln DB so the first scanned deploy isn't slow.
+    if (scanConfig.enabledByDefault) prewarmTrivyDb();
   } else {
     server.log.warn("Docker not available - container features disabled");
   }

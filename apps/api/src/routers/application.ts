@@ -10,7 +10,12 @@ import { router, protectedProcedure } from "../trpc";
 
 import { deployQueue } from "../lib/redis";
 import { encrypt, encryptEnvVars, decryptEnvVars } from "../lib/encryption";
-import { logAction } from "../lib/audit";
+import { logAction } from "../lib/audit/audit";
+import {
+  hasActiveDeployment,
+  tryAcquireDeployLock,
+  releaseDeployLock,
+} from "../lib/deploy-lock";
 import { emitDeployStatus, emitServiceStatus } from "../lib/socket";
 import {
   getProjectRole,
@@ -156,6 +161,8 @@ export const applicationRouter = router({
         previewDomain: z.string().max(255).nullable().optional(),
         // Public status page visibility
         statusPageVisible: z.boolean().optional(),
+        // Image vulnerability scanning (null = inherit global default)
+        scanEnabled: z.boolean().nullable().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -352,6 +359,12 @@ export const applicationRouter = router({
           message: "Operator access required for this project",
         });
 
+      if (await hasActiveDeployment(app.id))
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "A deployment is already in progress for this application",
+        });
+
       const [deployment] = await ctx.db
         .insert(deployments)
         .values({
@@ -365,10 +378,14 @@ export const applicationRouter = router({
         .set({ status: "building", updatedAt: new Date() })
         .where(eq(applications.id, app.id));
 
-      await deployQueue.add("deploy", {
-        deploymentId: deployment!.id,
-        applicationId: app.id,
-      });
+      await deployQueue.add(
+        "deploy",
+        {
+          deploymentId: deployment!.id,
+          applicationId: app.id,
+        },
+        { jobId: deployment!.id },
+      );
 
       await logAction(ctx, {
         action: "application.deploy",
@@ -418,6 +435,12 @@ export const applicationRouter = router({
         });
       }
 
+      if (await hasActiveDeployment(app.id))
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "A deployment is already in progress for this application",
+        });
+
       const [deployment] = await ctx.db
         .insert(deployments)
         .values({
@@ -432,11 +455,15 @@ export const applicationRouter = router({
         .set({ status: "building", updatedAt: new Date() })
         .where(eq(applications.id, app.id));
 
-      await deployQueue.add("deploy", {
-        deploymentId: deployment!.id,
-        applicationId: app.id,
-        branch: input.branch,
-      });
+      await deployQueue.add(
+        "deploy",
+        {
+          deploymentId: deployment!.id,
+          applicationId: app.id,
+          branch: input.branch,
+        },
+        { jobId: deployment!.id },
+      );
 
       await logAction(ctx, {
         action: "application.deploy",
@@ -511,6 +538,22 @@ export const applicationRouter = router({
           });
         }
       }
+
+      // Rollback removes and recreates the same containers a deploy job
+      // does, so it must not overlap with one: reject if a deploy is active
+      // and hold the per-app lock while working.
+      if (await hasActiveDeployment(app.id))
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "A deployment is already in progress for this application",
+        });
+
+      const lockToken = crypto.randomUUID();
+      if (!(await tryAcquireDeployLock(app.id, lockToken)))
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "A deployment is already in progress for this application",
+        });
 
       // Create rollback deployment record
       const [rollbackDeploy] = await ctx.db
@@ -655,6 +698,8 @@ export const applicationRouter = router({
         emitServiceStatus(app.id, "error");
 
         throw error;
+      } finally {
+        await releaseDeployLock(app.id, lockToken);
       }
     }),
 
@@ -733,7 +778,16 @@ export const applicationRouter = router({
       const app = await ctx.db.query.applications.findFirst({
         where: eq(applications.id, input.id),
       });
-      if (!app?.containerId) return { logs: "" };
+      // Authorization: only project members may read container logs.
+      const role = app
+        ? await getProjectRole(ctx.user, app.projectId)
+        : null;
+      if (!app || !role)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Application not found",
+        });
+      if (!app.containerId) return { logs: "" };
       try {
         const { docker } = await getDockerForServer(app.serverId);
         const logs = await docker.getLogs(app.containerId, input.tail);
@@ -749,7 +803,16 @@ export const applicationRouter = router({
       const app = await ctx.db.query.applications.findFirst({
         where: eq(applications.id, input.id),
       });
-      if (!app?.containerId) return null;
+      // Authorization: only project members may read live stats.
+      const role = app
+        ? await getProjectRole(ctx.user, app.projectId)
+        : null;
+      if (!app || !role)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Application not found",
+        });
+      if (!app.containerId) return null;
       try {
         const { docker } = await getDockerForServer(app.serverId);
         return await docker.getStats(app.containerId);
@@ -765,7 +828,15 @@ export const applicationRouter = router({
       const app = await ctx.db.query.applications.findFirst({
         where: eq(applications.id, input.id),
       });
-      if (!app) return [];
+      // Authorization: only project members may list running instances.
+      const role = app
+        ? await getProjectRole(ctx.user, app.projectId)
+        : null;
+      if (!app || !role)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Application not found",
+        });
       try {
         const { docker } = await getDockerForServer(app.serverId);
         return await docker.listServiceContainers(app.id);
@@ -777,6 +848,14 @@ export const applicationRouter = router({
   deployments: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      // Authorization: deployment history exposes build/deploy logs and scan
+      // results, so it's restricted to project members.
+      const role = await getProjectRoleByAppId(ctx.user, input.id);
+      if (!role)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Application not found",
+        });
       return ctx.db.query.deployments.findMany({
         where: eq(deployments.applicationId, input.id),
         orderBy: (d, { desc }) => [desc(d.createdAt)],
@@ -787,6 +866,13 @@ export const applicationRouter = router({
   listPreviews: protectedProcedure
     .input(z.object({ parentId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      // Authorization: only members of the parent app's project may list previews.
+      const role = await getProjectRoleByAppId(ctx.user, input.parentId);
+      if (!role)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Application not found",
+        });
       return ctx.db.query.applications.findMany({
         where: and(
           eq(applications.parentApplicationId, input.parentId),

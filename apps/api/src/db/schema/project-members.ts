@@ -7,10 +7,11 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
+
 import { users } from "./users";
 import { projects } from "./projects";
 
-export const projectMembers = pgTable(
+const projectMembers = pgTable(
   "project_members",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -31,7 +32,7 @@ export const projectMembers = pgTable(
   ],
 );
 
-export const projectMemberRelations = relations(projectMembers, ({ one }) => ({
+const projectMemberRelations = relations(projectMembers, ({ one }) => ({
   project: one(projects, {
     fields: [projectMembers.projectId],
     references: [projects.id],
@@ -42,5 +43,12 @@ export const projectMemberRelations = relations(projectMembers, ({ one }) => ({
   }),
 }));
 
-export type ProjectMember = typeof projectMembers.$inferSelect;
-export type NewProjectMember = typeof projectMembers.$inferInsert;
+type ProjectMemberT = typeof projectMembers.$inferSelect;
+type NewProjectMemberT = typeof projectMembers.$inferInsert;
+
+export {
+  projectMembers,
+  projectMemberRelations,
+  type ProjectMemberT,
+  type NewProjectMemberT,
+};

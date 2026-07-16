@@ -7,6 +7,7 @@ import {
   Settings,
   Terminal,
   TerminalSquare,
+  ShieldCheck,
 } from "lucide-react";
 
 import type { TabT } from "@application/infrastructure/ui/types/application.module.types";
@@ -28,6 +29,7 @@ const TABS: { id: TabT; label: string; icon: any }[] = [
   { id: "logs", label: "Logs", icon: Terminal },
   { id: "terminal", label: "Terminal", icon: TerminalSquare },
   { id: "monitoring", label: "Monitoring", icon: BarChart3 },
+  { id: "security", label: "Security", icon: ShieldCheck },
   { id: "previews", label: "Previews", icon: GitBranch },
 ];
 

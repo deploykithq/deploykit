@@ -1,6 +1,3 @@
-// Common patterns for tokens, passwords, and keys that may leak into
-// build/deploy output or container stdout/stderr. We scrub them before
-// storing or emitting logs.
 const SECRET_PATTERNS: RegExp[] = [
   // Generic tokens: ghp_, glpat-, github_pat_, ghs_, sk-, sk_live_, sk_test_
   /\b(ghp_|glpat-|github_pat_|ghs_|sk-|sk_live_|sk_test_)[A-Za-z0-9_-]{10,}\b/g,
@@ -16,7 +13,7 @@ const SECRET_PATTERNS: RegExp[] = [
   /\b[0-9a-f]{64,}\b/gi,
 ];
 
-export function redactSecrets(msg: string): string {
+export const redactSecrets = (msg: string): string => {
   let redacted = msg;
   for (const pattern of SECRET_PATTERNS) {
     // Reset lastIndex for global regexes

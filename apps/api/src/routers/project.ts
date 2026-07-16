@@ -1,6 +1,16 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { eq, inArray } from "drizzle-orm";
+import { createProjectSchema } from "@deploykit/shared";
+
+import {
+  router,
+  protectedProcedure,
+  operatorProcedure,
+  adminProcedure,
+} from "../trpc";
+
+import { DockerService } from "../services/docker";
 
 import {
   projects,
@@ -9,22 +19,13 @@ import {
   projectMembers,
 } from "../db/schema/index";
 
-import { DockerService } from "../services/docker";
-import {
-  router,
-  protectedProcedure,
-  operatorProcedure,
-  adminProcedure,
-} from "../trpc";
-
-import { createProjectSchema } from "@deploykit/shared";
-import { logAction } from "../lib/audit";
 import {
   getProjectRole,
   getAccessibleProjectIds,
   canView,
   canOperate,
 } from "../lib/permissions";
+import { logAction } from "../lib/audit/audit";
 
 const dockerService = new DockerService();
 
@@ -34,6 +35,7 @@ export const projectRouter = router({
     if (ctx.user.role !== "admin") {
       const accessibleIds = await getAccessibleProjectIds(ctx.user);
       if (accessibleIds.length === 0) return [];
+      
       return ctx.db.query.projects.findMany({
         where: inArray(projects.id, accessibleIds),
         with: {
@@ -59,8 +61,12 @@ export const projectRouter = router({
       const role = await getProjectRole(ctx.user, input.id);
       if (!canView(role)) {
         // NOT_FOUND (not FORBIDDEN) so non-members can't probe which ids exist
-        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Project not found",
+        });
       }
+
       const project = await ctx.db.query.projects.findFirst({
         where: eq(projects.id, input.id),
         with: {
@@ -70,8 +76,13 @@ export const projectRouter = router({
           databases: true,
         },
       });
+
       if (!project)
-        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Project not found",
+        });
+
       return project;
     }),
 
@@ -88,12 +99,14 @@ export const projectRouter = router({
           role: "admin",
         });
       }
+
       await logAction(ctx, {
         action: "project.create",
         resourceType: "project",
         resourceId: project!.id,
         resourceName: project!.name,
       });
+
       return project!;
     }),
 
@@ -113,12 +126,14 @@ export const projectRouter = router({
           message: "Operator access required for this project",
         });
       }
+
       const { id, ...data } = input;
       const [project] = await ctx.db
         .update(projects)
         .set({ ...data, updatedAt: new Date() })
         .where(eq(projects.id, id))
         .returning();
+
       await logAction(ctx, {
         action: "project.update",
         resourceType: "project",
@@ -126,6 +141,7 @@ export const projectRouter = router({
         resourceName: project!.name,
         metadata: data,
       });
+
       return project!;
     }),
 
@@ -154,6 +170,7 @@ export const projectRouter = router({
           message: "Operator access required for this project",
         });
       }
+
       if (input.enabled && !input.slug) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -167,6 +184,7 @@ export const projectRouter = router({
           where: eq(projects.statusPageSlug, input.slug),
           columns: { id: true },
         });
+
         if (existing && existing.id !== input.id) {
           throw new TRPCError({
             code: "CONFLICT",
@@ -174,6 +192,7 @@ export const projectRouter = router({
           });
         }
       }
+
       const [project] = await ctx.db
         .update(projects)
         .set({
@@ -184,6 +203,7 @@ export const projectRouter = router({
         })
         .where(eq(projects.id, input.id))
         .returning();
+
       await logAction(ctx, {
         action: "project.update_status_page",
         resourceType: "project",
@@ -191,6 +211,7 @@ export const projectRouter = router({
         resourceName: project!.name,
         metadata: { enabled: input.enabled, slug: input.slug },
       });
+
       return project!;
     }),
 
@@ -205,6 +226,7 @@ export const projectRouter = router({
       const apps = await ctx.db.query.applications.findMany({
         where: eq(applications.projectId, input.id),
       });
+
       for (const app of apps) {
         if (app.containerId) {
           try {
@@ -217,6 +239,7 @@ export const projectRouter = router({
       const dbs = await ctx.db.query.databases.findMany({
         where: eq(databases.projectId, input.id),
       });
+
       for (const db of dbs) {
         if (db.containerId) {
           try {
@@ -227,6 +250,7 @@ export const projectRouter = router({
 
       // Cascade delete project + apps + dbs + deployments + domains
       await ctx.db.delete(projects).where(eq(projects.id, input.id));
+
       await logAction(ctx, {
         action: "project.delete",
         resourceType: "project",
@@ -234,6 +258,7 @@ export const projectRouter = router({
         resourceName: project?.name,
         metadata: { appsDeleted: apps.length, dbsDeleted: dbs.length },
       });
+
       return { success: true };
     }),
 });

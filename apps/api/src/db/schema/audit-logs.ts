@@ -1,6 +1,14 @@
-import { pgTable, uuid, varchar, text, jsonb, timestamp, index } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  uuid,
+  varchar,
+  text,
+  jsonb,
+  timestamp,
+  index,
+} from "drizzle-orm/pg-core";
 
-export const auditLogs = pgTable(
+const auditLogs = pgTable(
   "audit_logs",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -27,4 +35,6 @@ export const auditLogs = pgTable(
   ],
 );
 
-export type AuditLog = typeof auditLogs.$inferSelect;
+type AuditLogT = typeof auditLogs.$inferSelect;
+
+export { auditLogs, type AuditLogT };

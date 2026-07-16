@@ -1,12 +1,14 @@
-import { config } from "dotenv";
-import { resolve } from "path";
-import { Queue } from "bullmq";
 import IORedis from "ioredis";
+import { Queue } from "bullmq";
+import { resolve } from "path";
+import { config } from "dotenv";
 
 config({ path: resolve(import.meta.dirname, "../../../../.env") });
 
 const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
 const redis = new IORedis(redisUrl, { maxRetriesPerRequest: null });
+const RT_PREFIX = "rt:";
+const RT_TTL_SEC = 7 * 24 * 60 * 60; // 7 days
 
 const deployQueue = new Queue("deploy", {
   connection: redis,
@@ -27,13 +29,6 @@ const backupQueue = new Queue("backup", {
   },
 });
 
-const RT_PREFIX = "rt:";
-const RT_TTL_SEC = 7 * 24 * 60 * 60; // 7 days
-
-// Key: rt:{token}  →  value: userId  (TTL 7 days)
-// On login/register : set
-// On refresh        : del old + set new  (rotation)
-// On logout         : del
 const refreshTokenStore = {
   async set(token: string, userId: string): Promise<void> {
     await redis.set(`${RT_PREFIX}${token}`, userId, "EX", RT_TTL_SEC);
@@ -71,10 +66,4 @@ const isRateLimited = async (
   }
 };
 
-export {
-  refreshTokenStore,
-  redis,
-  deployQueue,
-  backupQueue,
-  isRateLimited,
-};
+export { refreshTokenStore, redis, deployQueue, backupQueue, isRateLimited };

@@ -9,10 +9,7 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 
-// Alert rules
-// One rule = "if <metric> on <service> is <operator> <threshold> → fire via <channel>"
-
-export const alertRules = pgTable(
+const alertRules = pgTable(
   "alert_rules",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -37,4 +34,6 @@ export const alertRules = pgTable(
   (t) => [index("alert_rules_service_idx").on(t.serviceType, t.serviceId)],
 );
 
-export type AlertRule = typeof alertRules.$inferSelect;
+type AlertRuleT = typeof alertRules.$inferSelect;
+
+export { alertRules, type AlertRuleT };

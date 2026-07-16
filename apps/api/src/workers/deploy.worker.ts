@@ -1,7 +1,7 @@
 import { Worker, type Job } from "bullmq";
 import path from "path";
 import { writeFileSync } from "fs";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import { db } from "../db/index";
 import { applications, deployments } from "../db/schema/index";
@@ -9,14 +9,16 @@ import { applications, deployments } from "../db/schema/index";
 import { GitService } from "../services/git";
 import { BuildService } from "../services/build";
 import { DockerService } from "../services/docker";
+import { fireNotification } from "../services/notifier";
 import { getDockerForServer } from "../services/docker-factory";
 import { RemoteDockerService } from "../services/remote-docker";
-import { fireNotification } from "../services/notifier";
+import { scanImage, scanConfig } from "../services/trivy-scanner";
 
-import { decrypt, decryptEnvVars } from "../lib/encryption";
 import { redis } from "../lib/redis";
-import { emitDeployLog, emitDeployStatus } from "../lib/socket";
+import { acquireDeployLock, releaseDeployLock } from "../lib/deploy-lock";
 import { redactSecrets } from "../lib/redact";
+import { decrypt, decryptEnvVars } from "../lib/encryption";
+import { emitDeployLog, emitDeployStatus } from "../lib/socket";
 
 import type { BuildType } from "@deploykit/shared";
 
@@ -48,7 +50,7 @@ const gitService = new GitService();
 const buildService = new BuildService();
 const localDockerService = new DockerService();
 
-export function startDeployWorker() {
+export const startDeployWorker = () => {
   const worker = new Worker<DeployJobData>(
     "deploy",
     async (job: Job<DeployJobData>) => {
@@ -57,11 +59,22 @@ export function startDeployWorker() {
       const log = (msg: string) => {
         const safe = redactSecrets(msg);
         emitDeployLog(deploymentId, safe);
-        appendLog(deploymentId, safe, "build");
+        // Fire-and-forget by design; a rejected floating promise would crash
+        // the process, so swallow DB hiccups here.
+        appendLog(deploymentId, safe, "build").catch(() => {});
       };
 
       try {
-        // 1. Load application data
+        // Serialize deploys per app: a concurrent execution would remove this
+        // one's freshly started container (and vice versa). Queued jobs wait
+        // here until the in-flight deploy finishes.
+        await acquireDeployLock(applicationId, deploymentId, () =>
+          log(
+            "Another deployment of this application is in progress — waiting for it to finish...\n",
+          ),
+        );
+
+        // Load application data
         log("Loading application configuration...\n");
 
         const app = await db.query.applications.findFirst({
@@ -92,7 +105,7 @@ export function startDeployWorker() {
         });
         emitDeployStatus(deploymentId, "building", { applicationId });
 
-        // 2. Clone & Build
+        // Clone & Build
         let imageTag: string;
         let commitHash = "latest";
         let commitMessage = "";
@@ -102,12 +115,12 @@ export function startDeployWorker() {
         if (app.envVars) {
           envVars = decryptEnvVars(app.envVars);
         }
-        const envList = Object.entries(envVars).map(([k, v]) => `${k}=${v}`);
 
         if (app.sourceType === "docker_image") {
-          // Docker image — just pull
           log(`Pulling image: ${app.repositoryUrl}\n`);
+
           await dockerService.pullImage(app.repositoryUrl!);
+
           imageTag = app.repositoryUrl!;
         } else if (isRemote) {
           // Remote: clone + build on the remote server
@@ -160,7 +173,6 @@ export function startDeployWorker() {
             app.buildArgs || {},
           );
 
-          // Cleanup build dir
           await remoteDocker.cleanup(remoteBuildPath);
         } else {
           // Local: existing flow
@@ -210,31 +222,89 @@ export function startDeployWorker() {
           });
         }
 
-        // 3. Deploy container
+        // Vulnerability scan (advisory — never blocks the deploy).
+        // Resolve per-app toggle, falling back to the global SCAN_ENABLED default.
+        const scanEnabled = app.scanEnabled ?? scanConfig.enabledByDefault;
+        if (!scanEnabled) {
+          // leave scan columns null
+        } else if (isRemote) {
+          // Local-first: the image lives on the remote daemon, out of reach here.
+          await updateDeployment(deploymentId, { scanStatus: "skipped" });
+          log("\nVulnerability scan skipped (remote server).\n");
+        } else {
+          log("\n── Scanning image for vulnerabilities ──────\n");
+          await updateDeployment(deploymentId, { scanStatus: "scanning" });
+          try {
+            const res = await scanImage({
+              imageTag,
+              onLog: log,
+              timeoutMs: scanConfig.timeoutMs,
+            });
+            const s = res.summary;
+            log(
+              `Scan: ${s.critical} critical, ${s.high} high, ${s.medium} medium, ${s.low} low\n`,
+            );
+            await updateDeployment(deploymentId, {
+              scanStatus: res.status,
+              scanResults: { summary: s, top: res.top, scannedAt: Date.now() },
+              scanFinishedAt: new Date(),
+            });
+          } catch (scanErr: any) {
+            // Advisory: a scan failure must not abort the deploy.
+            log(`Vulnerability scan errored: ${scanErr.message}\n`);
+            await updateDeployment(deploymentId, {
+              scanStatus: "error",
+              scanFinishedAt: new Date(),
+            });
+          }
+        }
+
+        // Deploy container
         await updateDeployment(deploymentId, { status: "deploying" });
         emitDeployStatus(deploymentId, "deploying", { applicationId });
         log("\n── Deploying ──────────────────────────────────\n");
 
-        // Stop old container(s). Remove every replica of this service by
-        // label so a scale-down doesn't leave orphans behind.
-        log("Stopping previous container(s)...\n");
-        try {
-          await dockerService.removeServiceContainers(app.id);
-        } catch {
-          log("No previous containers found, skipping.\n");
+        // The clone/build/scan above can take minutes. Re-read the row so
+        // config edits saved meanwhile (volumes, domains, env, limits) apply
+        // to the container we are about to start — deploying the stale
+        // snapshot silently drops them until the *next* deploy.
+        const cfg = await db.query.applications.findFirst({
+          where: eq(applications.id, applicationId),
+          with: { domains: true },
+        });
+        if (!cfg) {
+          throw new Error(
+            "Application was deleted while the deployment was running",
+          );
         }
 
-        const containerName = `dk-${app.name}`;
+        const runtimeEnvList = cfg.envVars
+          ? Object.entries(decryptEnvVars(cfg.envVars)).map(
+              ([k, v]) => `${k}=${v}`,
+            )
+          : [];
+
+        // Stop old container(s). Remove every replica of this service by label so a scale-down doesn't leave orphans behind.
+        log("Stopping previous container(s)...\n");
+        try {
+          await dockerService.removeServiceContainers(cfg.id);
+        } catch (removeErr: any) {
+          log(
+            `Warning: could not remove previous container(s): ${removeErr?.message ?? removeErr}\n`,
+          );
+        }
+
+        const containerName = `dk-${cfg.name}`;
 
         // Build domain config for Traefik
-        const appDomains = (app.domains || []).map((d) => ({
+        const appDomains = (cfg.domains || []).map((d) => ({
           domain: d.domain,
           https: d.https,
           port: d.port,
         }));
 
         // Parse persistent volumes
-        const appVolumes = (app.volumes as string[]) || [];
+        const appVolumes = (cfg.volumes as string[]) || [];
         if (appVolumes.length > 0) {
           log(`Volumes: ${appVolumes.join(", ")}\n`);
         }
@@ -247,19 +317,19 @@ export function startDeployWorker() {
         // For docker_image sources the image was already pulled above.
         const skipPull = app.sourceType !== "docker_image";
 
-        const cpuMillicores = app.cpuLimit ?? undefined;
-        const memoryMb = app.memoryLimit ?? undefined;
+        const cpuMillicores = cfg.cpuLimit ?? undefined;
+        const memoryMb = cfg.memoryLimit ?? undefined;
 
         if (appDomains.length > 0) {
           // Replicas only work behind Traefik (it load-balances containers
           // sharing one service); cap at the configured count.
-          const replicas = Math.max(1, app.replicas ?? 1);
+          const replicas = Math.max(1, cfg.replicas ?? 1);
           if (replicas > 1) log(`Replicas: ${replicas}\n`);
           containerId = await dockerService.deployApp({
             name: containerName,
             image: imageTag,
-            env: envList,
-            port: app.port || 3000,
+            env: runtimeEnvList,
+            port: cfg.port || 3000,
             domains: appDomains,
             volumes: appVolumes.length > 0 ? appVolumes : undefined,
             skipPull,
@@ -267,8 +337,8 @@ export function startDeployWorker() {
             cpuMillicores,
             memoryMb,
             labels: {
-              "deploykit.project": app.projectId,
-              "deploykit.service": app.id,
+              "deploykit.project": cfg.projectId,
+              "deploykit.service": cfg.id,
               "deploykit.deployment": deploymentId,
               "deploykit.commit": commitHash,
             },
@@ -276,23 +346,23 @@ export function startDeployWorker() {
         } else {
           // No domain → a fixed host port is published, which a second
           // replica can't bind. Force a single instance.
-          if ((app.replicas ?? 1) > 1) {
+          if ((cfg.replicas ?? 1) > 1) {
             log("Replicas require a domain; deploying a single instance.\n");
           }
           containerId = await dockerService.createAndStart({
             name: containerName,
             image: imageTag,
-            env: envList,
+            env: runtimeEnvList,
             networkName: "deploykit-network",
-            ports: app.port ? [{ host: app.port, container: app.port }] : [],
+            ports: cfg.port ? [{ host: cfg.port, container: cfg.port }] : [],
             volumes: appVolumes.length > 0 ? appVolumes : undefined,
             skipPull,
             cpuMillicores,
             memoryMb,
             labels: {
               "deploykit.managed": "true",
-              "deploykit.project": app.projectId,
-              "deploykit.service": app.id,
+              "deploykit.project": cfg.projectId,
+              "deploykit.service": cfg.id,
               "deploykit.deployment": deploymentId,
             },
           });
@@ -300,17 +370,44 @@ export function startDeployWorker() {
 
         log(`Container started: ${containerId}\n`);
 
-        // 4. Health check
+        // Trust but verify: the "Volumes:" line above only echoes the DB
+        // config. Inspect the real container so a missing mount fails the
+        // deploy loudly instead of silently sending uploads to container FS
+        // (where the next redeploy destroys them).
+        if (appVolumes.length > 0) {
+          const mounts = await dockerService.getContainerMounts(containerId);
+          for (const m of mounts) {
+            log(
+              `Mount applied: ${m.name ?? m.source} -> ${m.destination}${m.rw ? "" : " (ro)"}\n`,
+            );
+          }
+          const missing = appVolumes.filter((vol) => {
+            const [source, destination] = vol.split(":");
+            return !mounts.some(
+              (m) =>
+                m.destination === destination &&
+                (m.source === source || m.name === source),
+            );
+          });
+          if (missing.length > 0) {
+            throw new Error(
+              `Persistent volume(s) not applied to the container: ${missing.join(", ")}`,
+            );
+          }
+          log("✓ Persistent volumes verified on the running container.\n");
+        }
+
+        // Health check
         log("\n── Health check ───────────────────────────────\n");
         const hcResult = await healthCheck({
-          type: app.healthCheckType ?? "http",
-          path: app.healthCheckPath ?? "/",
-          timeout: app.healthCheckTimeout ?? 5,
-          interval: app.healthCheckInterval ?? 10,
-          retries: app.healthCheckRetries ?? 6,
-          required: app.healthCheckRequired ?? false,
+          type: cfg.healthCheckType ?? "http",
+          path: cfg.healthCheckPath ?? "/",
+          timeout: cfg.healthCheckTimeout ?? 5,
+          interval: cfg.healthCheckInterval ?? 10,
+          retries: cfg.healthCheckRetries ?? 6,
+          required: cfg.healthCheckRequired ?? false,
           domains: appDomains,
-          port: app.port ?? undefined,
+          port: cfg.port ?? undefined,
           containerId,
           log,
         });
@@ -322,7 +419,7 @@ export function startDeployWorker() {
             );
           }
           log(
-            `⚠️  Health check failed — container is running but may not be ready.\n`,
+            `⚠️ Health check failed — container is running but may not be ready.\n`,
           );
         } else {
           log(
@@ -330,7 +427,7 @@ export function startDeployWorker() {
           );
         }
 
-        // 5. Update records
+        // Update records
         await db
           .update(applications)
           .set({
@@ -365,15 +462,15 @@ export function startDeployWorker() {
         // Notify external channels
         fireNotification({
           event: "deploy.success",
-          projectId: app.projectId,
-          title: `Deploy succeeded: ${app.name}`,
-          message: `${app.name} deployed successfully${commitHash !== "latest" ? ` (${commitHash})` : ""}.`,
+          projectId: cfg.projectId,
+          title: `Deploy succeeded: ${cfg.name}`,
+          message: `${cfg.name} deployed successfully${commitHash !== "latest" ? ` (${commitHash})` : ""}.`,
           meta: {
-            applicationId: app.id,
-            applicationName: app.name,
+            applicationId: cfg.id,
+            applicationName: cfg.name,
             deploymentId,
             commitHash: commitHash !== "latest" ? commitHash : undefined,
-            branch: overrideBranch || app.branch,
+            branch: overrideBranch || cfg.branch,
           },
         }).catch(() => {}); // fire-and-forget
 
@@ -438,11 +535,21 @@ export function startDeployWorker() {
           );
         }
         throw error;
+      } finally {
+        await releaseDeployLock(applicationId, deploymentId);
       }
     },
     {
       connection: redis,
       concurrency: 2,
+      // Survive long event-loop stalls without losing the job lock — a lost
+      // lock makes BullMQ re-run the job in parallel with its still-running
+      // first execution (observed as two interleaved builds in one
+      // deployment's logs).
+      lockDuration: 120_000,
+      stalledInterval: 60_000,
+      // A stalled job must fail loudly, never be silently re-run.
+      maxStalledCount: 0,
       removeOnComplete: { count: 50 },
       removeOnFail: { count: 20 },
     },
@@ -454,6 +561,12 @@ export function startDeployWorker() {
 
   worker.on("failed", (job, err) => {
     console.error(`[deploy-worker] Job ${job?.id} failed:`, err.message);
+  });
+
+  worker.on("stalled", (jobId) => {
+    console.warn(
+      `[deploy-worker] Job ${jobId} stalled (lock lost — likely a blocked event loop); marking it failed instead of re-running`,
+    );
   });
 
   console.log("[deploy-worker] Worker started, waiting for jobs...");
@@ -472,16 +585,13 @@ async function appendLog(
   log: string,
   type: "build" | "deploy",
 ) {
+  // Append in SQL, not in JS: log() fires these without awaiting, and a
+  // read-modify-write here silently drops chunks when two appends overlap.
   const field = type === "build" ? "buildLogs" : "deployLogs";
-  const current = await db.query.deployments.findFirst({
-    where: eq(deployments.id, deploymentId),
-    columns: { [field]: true },
-  });
-
-  const currentLog = (current as any)?.[field] || "";
+  const column = type === "build" ? deployments.buildLogs : deployments.deployLogs;
   await db
     .update(deployments)
-    .set({ [field]: currentLog + log })
+    .set({ [field]: sql`coalesce(${column}, '') || ${log}` })
     .where(eq(deployments.id, deploymentId));
 }
 

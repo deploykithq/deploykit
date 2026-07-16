@@ -1,14 +1,17 @@
 import jwt from "jsonwebtoken";
 import { eq, or } from "drizzle-orm";
-import { db } from "../db/index";
+
 import {
   users,
   applications,
   databases,
   deployments,
 } from "../db/schema/index";
-import type { User } from "../db/schema/index";
+import { db } from "../db/index";
+
 import { getProjectRole } from "./permissions";
+
+import type { UserT } from "../db/schema/index";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -19,7 +22,7 @@ const UUID_RE =
  */
 const verifySocketAuth = async (
   token: string | undefined,
-): Promise<User | null> => {
+): Promise<UserT | null> => {
   if (!token || typeof token !== "string") return null;
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET!, {
@@ -63,7 +66,7 @@ const findProjectIdByServiceRef = async (
 
 /** Can this user view the project that owns the given deployment? */
 const canViewDeployment = async (
-  user: User,
+  user: UserT,
   deploymentId: string,
 ): Promise<boolean> => {
   if (!UUID_RE.test(deploymentId)) return false;
@@ -87,12 +90,13 @@ const canViewDeployment = async (
  * Can this user view the project that owns the given service
  * (application/database UUID or Docker container id)?
  */
-const canViewService = async (user: User, ref: string): Promise<boolean> => {
+const canViewService = async (user: UserT, ref: string): Promise<boolean> => {
   if (typeof ref !== "string" || ref.length === 0 || ref.length > 100) {
     return false;
   }
   const projectId = await findProjectIdByServiceRef(ref);
   if (!projectId) return false;
+
   return (await getProjectRole(user, projectId)) !== null;
 };
 

@@ -6,4 +6,9 @@ export { LogsTab } from "./LogsTab";
 export { MonitoringTab } from "./MonitoringTab";
 export { PreviewsTab } from "./PreviewsTab";
 export { LogViewer } from "./LogViewer";
+export {
+  VulnerabilityBadge,
+  ScanResultsPanel,
+} from "./VulnerabilityBadge";
+export { SecurityTab } from "./SecurityTab";
 export { CopyableField } from "./CopyableField";

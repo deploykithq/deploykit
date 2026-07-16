@@ -3,6 +3,10 @@ import { RotateCcw } from "lucide-react";
 
 import { Card, Button, StatusBadge, ConfirmDialog } from "@shared/components";
 import { LogViewer } from "@application/infrastructure/ui/components/LogViewer";
+import {
+  VulnerabilityBadge,
+  ScanResultsPanel,
+} from "@application/infrastructure/ui/components/VulnerabilityBadge";
 
 import { trpc } from "@lib/trpc";
 import { useDeployLogs } from "@lib/socket";
@@ -132,6 +136,11 @@ export const DeploymentsTab: React.FC<DeploymentsTabPropsI> = memo(
                               No image
                             </span>
                           )}
+
+                          <VulnerabilityBadge
+                            scanStatus={d.scanStatus}
+                            summary={d.scanResults?.summary}
+                          />
                         </div>
 
                         {d.commitMessage && (
@@ -175,6 +184,23 @@ export const DeploymentsTab: React.FC<DeploymentsTabPropsI> = memo(
             </div>
           )}
         </Card>
+
+        {selectedDeployId &&
+          (() => {
+            const selected = deploymentsList?.find(
+              (d) => d.id === selectedDeployId,
+            );
+            if (!selected?.scanStatus) return null;
+            return (
+              <Card>
+                <h3 className="text-sm font-medium mb-3">Security scan</h3>
+                <ScanResultsPanel
+                  scanStatus={selected.scanStatus}
+                  results={selected.scanResults}
+                />
+              </Card>
+            );
+          })()}
 
         {selectedDeployId && (
           <Card>

@@ -35,6 +35,13 @@ export class BuildService {
     log(`Image: ${imageTag}\n`);
     log(`Strategy: ${opts.buildType}\n\n`);
 
+    // Redeploying the same commit rebuilds a tag that already exists. Docker's
+    // containerd image store intermittently fails to overwrite that reference
+    // ("failed to create an image ... after deleting the existing one:
+    // AlreadyExists"), so drop the old tag first: a plain create never hits
+    // that path, layers stay cached, and running containers keep the image ID.
+    await this.untagPreviousImage(imageTag, log);
+
     switch (opts.buildType) {
       case "dockerfile":
         await this.buildDockerfile(
@@ -64,6 +71,28 @@ export class BuildService {
 
     log(`\n── Build complete ─────────────────────────\n`);
     return imageTag;
+  }
+
+  /**
+   * Remove an existing local tag so the build's tagging step is a fresh
+   * create. `force` only untags while a container still uses the image, so
+   * the currently running deployment is unaffected.
+   */
+  private async untagPreviousImage(
+    imageTag: string,
+    onLog?: (log: string) => void,
+  ): Promise<void> {
+    try {
+      await docker.getImage(imageTag).remove({ force: true });
+      onLog?.(`Removed previous image tag ${imageTag}\n`);
+    } catch (err: any) {
+      // 404 = first build of this tag; anything else is best-effort only.
+      if (err?.statusCode !== 404) {
+        onLog?.(
+          `Warning: could not remove previous image tag ${imageTag}: ${err?.message ?? err}\n`,
+        );
+      }
+    }
   }
 
   /**

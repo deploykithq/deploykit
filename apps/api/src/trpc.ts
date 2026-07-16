@@ -1,17 +1,19 @@
-import { initTRPC, TRPCError } from "@trpc/server";
 import jwt from "jsonwebtoken";
-import type { FastifyRequest } from "fastify";
+import { initTRPC, TRPCError } from "@trpc/server";
+
 import { db } from "./db/index";
-import type { User } from "./db/schema/index";
+
+import type { UserT } from "./db/schema/index";
+import type { FastifyRequest } from "fastify";
 
 export interface Context {
   db: typeof db;
-  user: User | null;
+  user: UserT | null;
   ip: string;
 }
 
 const createContext = async (req: FastifyRequest): Promise<Context> => {
-  let user: User | null = null;
+  let user: UserT | null = null;
 
   // Trust X-Forwarded-For only behind a configured proxy; otherwise it's
   // client-spoofable and would poison audit logs / rate-limit keys.

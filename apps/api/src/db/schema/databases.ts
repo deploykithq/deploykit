@@ -8,10 +8,11 @@ import {
   timestamp,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { projects } from "./projects";
-import { servers } from "./servers";
 
-export const databases = pgTable("databases", {
+import { servers } from "./servers";
+import { projects } from "./projects";
+
+const databases = pgTable("databases", {
   id: uuid("id").defaultRandom().primaryKey(),
   projectId: uuid("project_id")
     .references(() => projects.id, { onDelete: "cascade" })
@@ -27,7 +28,9 @@ export const databases = pgTable("databases", {
   // Container state
   containerId: varchar("container_id", { length: 100 }),
   status: varchar("status", { length: 20 }).default("idle").notNull(),
-  serverId: uuid("server_id").references(() => servers.id, { onDelete: "set null" }),
+  serverId: uuid("server_id").references(() => servers.id, {
+    onDelete: "set null",
+  }),
   // Replica set (MongoDB only)
   replicaSet: boolean("replica_set").default(false).notNull(),
   // Backup config
@@ -39,7 +42,7 @@ export const databases = pgTable("databases", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const databaseRelations = relations(databases, ({ one }) => ({
+const databaseRelations = relations(databases, ({ one }) => ({
   project: one(projects, {
     fields: [databases.projectId],
     references: [projects.id],
@@ -50,5 +53,7 @@ export const databaseRelations = relations(databases, ({ one }) => ({
   }),
 }));
 
-export type Database = typeof databases.$inferSelect;
-export type NewDatabase = typeof databases.$inferInsert;
+type DatabaseT = typeof databases.$inferSelect;
+type NewDatabaseT = typeof databases.$inferInsert;
+
+export { databases, databaseRelations, type DatabaseT, type NewDatabaseT };

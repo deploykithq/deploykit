@@ -17,7 +17,7 @@ import {
 } from "../trpc";
 
 import { encrypt } from "../lib/encryption";
-import { logAction } from "../lib/audit";
+import { logAction } from "../lib/audit/audit";
 
 import { createServerSchema } from "@deploykit/shared";
 
