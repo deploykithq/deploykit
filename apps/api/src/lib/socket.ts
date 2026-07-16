@@ -8,7 +8,7 @@ import {
   canViewService,
 } from "./socket-auth";
 
-import type { UserI } from "../db/schema/index";
+import type { UserT } from "../db/schema/index";
 import type { Server as HttpServer } from "http";
 
 let io: SocketServer | null = null;
@@ -50,7 +50,7 @@ const initSocket = (
   });
 
   io.on("connection", (socket) => {
-    const user = socket.data.user as UserI;
+    const user = socket.data.user as UserT;
     console.log(`[socket] Client connected: ${socket.id} (user ${user.id})`);
 
     // Join deployment room for real-time logs

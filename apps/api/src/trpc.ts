@@ -3,17 +3,17 @@ import { initTRPC, TRPCError } from "@trpc/server";
 
 import { db } from "./db/index";
 
-import type { UserI } from "./db/schema/index";
+import type { UserT } from "./db/schema/index";
 import type { FastifyRequest } from "fastify";
 
 export interface Context {
   db: typeof db;
-  user: UserI | null;
+  user: UserT | null;
   ip: string;
 }
 
 const createContext = async (req: FastifyRequest): Promise<Context> => {
-  let user: UserI | null = null;
+  let user: UserT | null = null;
 
   // Trust X-Forwarded-For only behind a configured proxy; otherwise it's
   // client-spoofable and would poison audit logs / rate-limit keys.

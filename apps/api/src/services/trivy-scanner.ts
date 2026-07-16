@@ -1,7 +1,6 @@
 import { execFile } from "child_process";
 
 import type {
-  ScanResults,
   ScanSummaryI,
   ScanVulnerabilityI,
 } from "../db/schema/deployments";
