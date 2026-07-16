@@ -11,6 +11,11 @@ import { router, protectedProcedure } from "../trpc";
 import { deployQueue } from "../lib/redis";
 import { encrypt, encryptEnvVars, decryptEnvVars } from "../lib/encryption";
 import { logAction } from "../lib/audit/audit";
+import {
+  hasActiveDeployment,
+  tryAcquireDeployLock,
+  releaseDeployLock,
+} from "../lib/deploy-lock";
 import { emitDeployStatus, emitServiceStatus } from "../lib/socket";
 import {
   getProjectRole,
@@ -354,6 +359,12 @@ export const applicationRouter = router({
           message: "Operator access required for this project",
         });
 
+      if (await hasActiveDeployment(app.id))
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "A deployment is already in progress for this application",
+        });
+
       const [deployment] = await ctx.db
         .insert(deployments)
         .values({
@@ -367,10 +378,14 @@ export const applicationRouter = router({
         .set({ status: "building", updatedAt: new Date() })
         .where(eq(applications.id, app.id));
 
-      await deployQueue.add("deploy", {
-        deploymentId: deployment!.id,
-        applicationId: app.id,
-      });
+      await deployQueue.add(
+        "deploy",
+        {
+          deploymentId: deployment!.id,
+          applicationId: app.id,
+        },
+        { jobId: deployment!.id },
+      );
 
       await logAction(ctx, {
         action: "application.deploy",
@@ -420,6 +435,12 @@ export const applicationRouter = router({
         });
       }
 
+      if (await hasActiveDeployment(app.id))
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "A deployment is already in progress for this application",
+        });
+
       const [deployment] = await ctx.db
         .insert(deployments)
         .values({
@@ -434,11 +455,15 @@ export const applicationRouter = router({
         .set({ status: "building", updatedAt: new Date() })
         .where(eq(applications.id, app.id));
 
-      await deployQueue.add("deploy", {
-        deploymentId: deployment!.id,
-        applicationId: app.id,
-        branch: input.branch,
-      });
+      await deployQueue.add(
+        "deploy",
+        {
+          deploymentId: deployment!.id,
+          applicationId: app.id,
+          branch: input.branch,
+        },
+        { jobId: deployment!.id },
+      );
 
       await logAction(ctx, {
         action: "application.deploy",
@@ -513,6 +538,22 @@ export const applicationRouter = router({
           });
         }
       }
+
+      // Rollback removes and recreates the same containers a deploy job
+      // does, so it must not overlap with one: reject if a deploy is active
+      // and hold the per-app lock while working.
+      if (await hasActiveDeployment(app.id))
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "A deployment is already in progress for this application",
+        });
+
+      const lockToken = crypto.randomUUID();
+      if (!(await tryAcquireDeployLock(app.id, lockToken)))
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "A deployment is already in progress for this application",
+        });
 
       // Create rollback deployment record
       const [rollbackDeploy] = await ctx.db
@@ -657,6 +698,8 @@ export const applicationRouter = router({
         emitServiceStatus(app.id, "error");
 
         throw error;
+      } finally {
+        await releaseDeployLock(app.id, lockToken);
       }
     }),
 

@@ -47,6 +47,14 @@ export interface DockerServiceI {
     cpuMillicores?: number;
     memoryMb?: number;
   }): Promise<string>;
+  getContainerMounts(containerId: string): Promise<
+    Array<{
+      source: string;
+      destination: string;
+      name?: string;
+      rw: boolean;
+    }>
+  >;
   start(containerId: string): Promise<void>;
   stop(containerId: string): Promise<void>;
   stopAndRemove(containerId: string): Promise<void>;

@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useRef, useState } from "react";
 import {
   Lock,
   HardDrive,
@@ -103,43 +103,121 @@ export const GeneralTab: React.FC<GeneralTabPropsI> = memo(function GeneralTab({
     app.scanEnabled == null ? "default" : app.scanEnabled ? "on" : "off",
   );
 
+  // Snapshot of the values this form opened with. Save sends ONLY fields the
+  // user actually changed: sending the whole form would turn every save into
+  // a stale read-modify-write that reverts (or wipes — volumes:null) config
+  // modified elsewhere while this tab sat on a cached snapshot.
+  const initial = useRef({
+    repoUrl: app.repositoryUrl || "",
+    branch: app.branch || "main",
+    rootDirectory: app.rootDirectory || "",
+    volumes: JSON.stringify((app.volumes as string[]) || []),
+    buildType: app.buildType || "nixpacks",
+    dockerfilePath: app.dockerfilePath || "Dockerfile",
+    startCommand: app.startCommand || "",
+    port: String(app.port || ""),
+    cpuCores: app.cpuLimit ? String(app.cpuLimit / 1000) : "",
+    memoryMb: app.memoryLimit ? String(app.memoryLimit) : "",
+    replicas: String(app.replicas ?? 1),
+    autoscaleEnabled: app.autoscaleEnabled ?? false,
+    autoscaleMin: String(app.autoscaleMin ?? 1),
+    autoscaleMax: String(app.autoscaleMax ?? 3),
+    autoscaleCpuTarget:
+      app.autoscaleCpuTarget != null ? String(app.autoscaleCpuTarget) : "70",
+    autoscaleMemTarget:
+      app.autoscaleMemTarget != null ? String(app.autoscaleMemTarget) : "",
+    hcType: app.healthCheckType ?? "http",
+    hcPath: app.healthCheckPath ?? "/",
+    hcTimeout: String(app.healthCheckTimeout ?? 5),
+    hcInterval: String(app.healthCheckInterval ?? 10),
+    hcRetries: String(app.healthCheckRetries ?? 6),
+    hcRequired: app.healthCheckRequired ?? false,
+    previewEnabled: app.previewEnabled ?? false,
+    previewDomain: app.previewDomain ?? "",
+    scanMode: (app.scanEnabled == null
+      ? "default"
+      : app.scanEnabled
+        ? "on"
+        : "off") as "default" | "on" | "off",
+  }).current;
+
   const handleSave = () =>
     updateMutation.mutate({
       id: applicationId,
-      repositoryUrl: repoUrl || undefined,
-      branch,
-      buildType,
-      dockerfilePath: buildType === "dockerfile" ? dockerfilePath || "Dockerfile" : undefined,
-      startCommand: startCommand || null,
-      port: parseInt(port) || undefined,
+      ...(repoUrl !== initial.repoUrl && {
+        repositoryUrl: repoUrl || undefined,
+      }),
+      ...(branch !== initial.branch && { branch }),
+      ...(buildType !== initial.buildType && { buildType }),
+      ...(buildType === "dockerfile" &&
+        (dockerfilePath !== initial.dockerfilePath ||
+          buildType !== initial.buildType) && {
+          dockerfilePath: dockerfilePath || "Dockerfile",
+        }),
+      ...(startCommand !== initial.startCommand && {
+        startCommand: startCommand || null,
+      }),
+      ...(port !== initial.port && { port: parseInt(port) || undefined }),
       ...(tokenDirty && { sourceToken: sourceToken || null }),
-      rootDirectory: rootDirectory || null,
-      volumes: volumes.length > 0 ? volumes : null,
+      ...(rootDirectory !== initial.rootDirectory && {
+        rootDirectory: rootDirectory || null,
+      }),
+      ...(JSON.stringify(volumes) !== initial.volumes && {
+        volumes: volumes.length > 0 ? volumes : null,
+      }),
       // Resources: cores → millicores; empty = unlimited (null)
-      cpuLimit: cpuCores.trim()
-        ? Math.round(parseFloat(cpuCores) * 1000)
-        : null,
-      memoryLimit: memoryMb.trim() ? parseInt(memoryMb) : null,
-      replicas: parseInt(replicas) || 1,
+      ...(cpuCores !== initial.cpuCores && {
+        cpuLimit: cpuCores.trim()
+          ? Math.round(parseFloat(cpuCores) * 1000)
+          : null,
+      }),
+      ...(memoryMb !== initial.memoryMb && {
+        memoryLimit: memoryMb.trim() ? parseInt(memoryMb) : null,
+      }),
+      ...(replicas !== initial.replicas && {
+        replicas: parseInt(replicas) || 1,
+      }),
       // Autoscaling
-      autoscaleEnabled,
-      autoscaleMin: parseInt(autoscaleMin) || 1,
-      autoscaleMax: parseInt(autoscaleMax) || 3,
-      autoscaleCpuTarget: autoscaleCpuTarget.trim()
-        ? parseInt(autoscaleCpuTarget)
-        : null,
-      autoscaleMemTarget: autoscaleMemTarget.trim()
-        ? parseInt(autoscaleMemTarget)
-        : null,
-      healthCheckType: hcType as any,
-      healthCheckPath: hcPath || "/",
-      healthCheckTimeout: parseInt(hcTimeout) || 5,
-      healthCheckInterval: parseInt(hcInterval) || 10,
-      healthCheckRetries: parseInt(hcRetries) || 6,
-      healthCheckRequired: hcRequired,
-      previewEnabled,
-      previewDomain: previewDomain || null,
-      scanEnabled: scanMode === "default" ? null : scanMode === "on",
+      ...(autoscaleEnabled !== initial.autoscaleEnabled && {
+        autoscaleEnabled,
+      }),
+      ...(autoscaleMin !== initial.autoscaleMin && {
+        autoscaleMin: parseInt(autoscaleMin) || 1,
+      }),
+      ...(autoscaleMax !== initial.autoscaleMax && {
+        autoscaleMax: parseInt(autoscaleMax) || 3,
+      }),
+      ...(autoscaleCpuTarget !== initial.autoscaleCpuTarget && {
+        autoscaleCpuTarget: autoscaleCpuTarget.trim()
+          ? parseInt(autoscaleCpuTarget)
+          : null,
+      }),
+      ...(autoscaleMemTarget !== initial.autoscaleMemTarget && {
+        autoscaleMemTarget: autoscaleMemTarget.trim()
+          ? parseInt(autoscaleMemTarget)
+          : null,
+      }),
+      ...(hcType !== initial.hcType && { healthCheckType: hcType as any }),
+      ...(hcPath !== initial.hcPath && { healthCheckPath: hcPath || "/" }),
+      ...(hcTimeout !== initial.hcTimeout && {
+        healthCheckTimeout: parseInt(hcTimeout) || 5,
+      }),
+      ...(hcInterval !== initial.hcInterval && {
+        healthCheckInterval: parseInt(hcInterval) || 10,
+      }),
+      ...(hcRetries !== initial.hcRetries && {
+        healthCheckRetries: parseInt(hcRetries) || 6,
+      }),
+      ...(hcRequired !== initial.hcRequired && {
+        healthCheckRequired: hcRequired,
+      }),
+      ...(previewEnabled !== initial.previewEnabled && { previewEnabled }),
+      ...(previewDomain !== initial.previewDomain && {
+        previewDomain: previewDomain || null,
+      }),
+      ...(scanMode !== initial.scanMode && {
+        scanEnabled: scanMode === "default" ? null : scanMode === "on",
+      }),
     });
 
   return (
@@ -637,6 +715,11 @@ export const GeneralTab: React.FC<GeneralTabPropsI> = memo(function GeneralTab({
         <Button onClick={handleSave} disabled={updateMutation.isPending}>
           {updateMutation.isPending ? "Saving..." : "Save Changes"}
         </Button>
+        {updateMutation.isError && (
+          <p className="text-xs text-danger">
+            Save failed: {updateMutation.error?.message ?? "Unknown error"}
+          </p>
+        )}
       </div>
     </Card>
   );

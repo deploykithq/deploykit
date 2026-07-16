@@ -3,7 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
-import { execSync, execFile } from "child_process";
+import { execFile } from "child_process";
 
 import { databases } from "../db/schema/index";
 
@@ -649,13 +649,29 @@ const initMongoReplicaSet = (
   });
 };
 
-const runRestore = (
+/**
+ * Run a shell pipeline asynchronously. Never use execSync here: it freezes
+ * the whole Node event loop (HTTP, Socket.IO, and BullMQ lock renewal — a
+ * blocked renewal makes an in-flight deploy job re-run in parallel with
+ * itself).
+ */
+const runShell = (cmd: string, timeoutMs: number): Promise<void> =>
+  new Promise((resolve, reject) => {
+    execFile(
+      "/bin/sh",
+      ["-c", cmd],
+      { timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 },
+      (error) => (error ? reject(error) : resolve()),
+    );
+  });
+
+const runRestore = async (
   type: DatabaseType,
   containerName: string,
   filePath: string,
   user: string,
   dbName: string,
-): void => {
+): Promise<void> => {
   // Sanitize all values before passing to shell
   const c = shellSafe(containerName);
   const f = shellSafe(filePath);
@@ -664,25 +680,27 @@ const runRestore = (
 
   switch (type) {
     case "postgresql":
-      execSync(`gunzip -c ${f} | docker exec -i ${c} psql -U ${u} -d ${d}`, {
-        timeout: 300_000,
-      });
+      await runShell(
+        `gunzip -c ${f} | docker exec -i ${c} psql -U ${u} -d ${d}`,
+        300_000,
+      );
       break;
     case "mongodb":
-      execSync(
+      await runShell(
         `cat ${f} | docker exec -i ${c} mongorestore --archive --gzip --drop`,
-        { timeout: 300_000 },
+        300_000,
       );
       break;
     case "mysql":
     case "mariadb":
-      execSync(`gunzip -c ${f} | docker exec -i ${c} mysql -u ${u} ${d}`, {
-        timeout: 300_000,
-      });
+      await runShell(
+        `gunzip -c ${f} | docker exec -i ${c} mysql -u ${u} ${d}`,
+        300_000,
+      );
       break;
     case "redis":
-      execSync(`docker cp ${f} ${c}:/data/dump.rdb`);
-      execSync(`docker restart ${c}`);
+      await runShell(`docker cp ${f} ${c}:/data/dump.rdb`, 300_000);
+      await runShell(`docker restart ${c}`, 60_000);
       break;
   }
 };

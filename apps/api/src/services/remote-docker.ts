@@ -51,6 +51,15 @@ export class RemoteDockerService {
           .join(" ")
       : "";
 
+    // Same-commit redeploys rebuild a tag that already exists; Docker's
+    // containerd image store can fail to overwrite it ("failed to create an
+    // image ... AlreadyExists"). Untag first — best-effort, layers stay
+    // cached and running containers keep the image ID.
+    await this.exec(
+      this.docker(`rmi -f ${shellEscape(tag)} 2>/dev/null || true`),
+      30_000,
+    );
+
     // Stream-like: we run the build and get all output at once.
     // Everything user-influenced is shell-escaped.
     const result = await this.exec(
@@ -172,6 +181,43 @@ export class RemoteDockerService {
     }
 
     return result.stdout.trim().slice(0, 12); // container ID
+  }
+
+  /**
+   * Real mounts on a container as reported by the remote daemon. Used after
+   * start to verify that every configured volume was actually applied.
+   */
+  async getContainerMounts(containerId: string): Promise<
+    Array<{
+      source: string;
+      destination: string;
+      name?: string;
+      rw: boolean;
+    }>
+  > {
+    const result = await this.exec(
+      this.docker(
+        `inspect --format '{{json .Mounts}}' ${shellEscape(containerId)}`,
+      ),
+      30_000,
+    );
+    if (result.code !== 0) {
+      throw new Error(
+        `Failed to inspect container mounts: ${result.stderr || result.stdout}`,
+      );
+    }
+    let mounts: any[];
+    try {
+      mounts = JSON.parse(result.stdout.trim() || "[]") ?? [];
+    } catch {
+      throw new Error("Could not parse container mounts from remote daemon");
+    }
+    return mounts.map((m: any) => ({
+      source: m.Source || "",
+      destination: m.Destination || "",
+      name: m.Name,
+      rw: m.RW !== false,
+    }));
   }
 
   async deployApp(opts: {

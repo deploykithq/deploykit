@@ -341,10 +341,14 @@ export class WebhookService {
         .set({ status: "building", updatedAt: new Date() })
         .where(eq(applications.id, app.id));
 
-      await deployQueue.add("deploy", {
-        deploymentId: deployment!.id,
-        applicationId: app.id,
-      });
+      await deployQueue.add(
+        "deploy",
+        {
+          deploymentId: deployment!.id,
+          applicationId: app.id,
+        },
+        { jobId: deployment!.id },
+      );
 
       console.log(
         `[webhook] Deploy triggered for "${app.name}" (${commitHash})`,
@@ -467,10 +471,14 @@ export class WebhookService {
       .set({ status: "building", updatedAt: new Date() })
       .where(eq(applications.id, previewId));
 
-    await deployQueue.add("deploy", {
-      deploymentId: deployment!.id,
-      applicationId: previewId,
-    });
+    await deployQueue.add(
+      "deploy",
+      {
+        deploymentId: deployment!.id,
+        applicationId: previewId,
+      },
+      { jobId: deployment!.id },
+    );
   }
 
   /** Stop container and delete the preview app record on PR close/merge. */
