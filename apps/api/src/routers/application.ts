@@ -11,6 +11,7 @@ import { router, protectedProcedure } from "../trpc";
 import { deployQueue } from "../lib/redis";
 import { encrypt, encryptEnvVars, decryptEnvVars } from "../lib/encryption";
 import { logAction } from "../lib/audit/audit";
+import { autoMapImageVolumes } from "../lib/volumes";
 import {
   hasActiveDeployment,
   tryAcquireDeployLock,
@@ -588,7 +589,22 @@ export const applicationRouter = router({
         }
 
         const containerName = `dk-${app.name}`;
-        const appVolumes = (app.volumes as string[]) ?? [];
+        const appVolumes = [...((app.volumes as string[]) ?? [])];
+
+        // Reattach the same deterministic named volumes the deploy worker
+        // auto-maps for image-declared `VOLUME` paths, so a rollback keeps
+        // that data instead of spawning fresh anonymous volumes.
+        try {
+          appVolumes.push(
+            ...autoMapImageVolumes(
+              app.name,
+              await dockerService.getImageVolumes(targetDeployment.imageName),
+              appVolumes,
+            ),
+          );
+        } catch {
+          // Advisory — roll back with the configured volumes only.
+        }
         const appDomains = (app.domains ?? []).map((d) => ({
           domain: d.domain,
           https: d.https,

@@ -55,6 +55,7 @@ export interface DockerServiceI {
       rw: boolean;
     }>
   >;
+  getImageVolumes(imageTag: string): Promise<string[]>;
   start(containerId: string): Promise<void>;
   stop(containerId: string): Promise<void>;
   stopAndRemove(containerId: string): Promise<void>;

@@ -128,6 +128,16 @@ export class DockerService {
   }
 
   /**
+   * Container paths the image declares via `VOLUME`. Each of these gets a
+   * fresh anonymous volume on every container recreation unless a bind covers
+   * it — callers attach deterministic named volumes instead.
+   */
+  async getImageVolumes(imageTag: string): Promise<string[]> {
+    const info = await docker.getImage(imageTag).inspect();
+    return Object.keys((info as any).Config?.Volumes ?? {});
+  }
+
+  /**
    * Deploy an application container with Traefik labels for routing
    */
   async deployApp(opts: {

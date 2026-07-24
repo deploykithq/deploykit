@@ -15,6 +15,7 @@ import { RemoteDockerService } from "../services/remote-docker";
 import { scanImage, scanConfig } from "../services/trivy-scanner";
 
 import { redis } from "../lib/redis";
+import { autoMapImageVolumes } from "../lib/volumes";
 import { acquireDeployLock, releaseDeployLock } from "../lib/deploy-lock";
 import { redactSecrets } from "../lib/redact";
 import { decrypt, decryptEnvVars } from "../lib/encryption";
@@ -304,7 +305,25 @@ export const startDeployWorker = () => {
         }));
 
         // Parse persistent volumes
-        const appVolumes = (cfg.volumes as string[]) || [];
+        const appVolumes = [...((cfg.volumes as string[]) || [])];
+
+        // Cover the image's declared `VOLUME` paths with deterministic named
+        // volumes. Left to the daemon, each declared path gets a brand-new
+        // anonymous volume per deploy, so its data appears erased after every
+        // redeploy. Advisory: an inspect failure must not abort the deploy.
+        try {
+          const declared = await dockerService.getImageVolumes(imageTag);
+          const autoMapped = autoMapImageVolumes(cfg.name, declared, appVolumes);
+          for (const vol of autoMapped) {
+            log(`Auto-mapped image volume: ${vol}\n`);
+          }
+          appVolumes.push(...autoMapped);
+        } catch (volErr: any) {
+          log(
+            `Warning: could not inspect image volumes: ${volErr?.message ?? volErr}\n`,
+          );
+        }
+
         if (appVolumes.length > 0) {
           log(`Volumes: ${appVolumes.join(", ")}\n`);
         }

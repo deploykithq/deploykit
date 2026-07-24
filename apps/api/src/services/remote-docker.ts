@@ -220,6 +220,30 @@ export class RemoteDockerService {
     }));
   }
 
+  /**
+   * Container paths the image declares via `VOLUME`. Each of these gets a
+   * fresh anonymous volume on every container recreation unless a bind covers
+   * it — callers attach deterministic named volumes instead.
+   */
+  async getImageVolumes(imageTag: string): Promise<string[]> {
+    const result = await this.exec(
+      this.docker(
+        `image inspect --format '{{json .Config.Volumes}}' ${shellEscape(imageTag)}`,
+      ),
+      30_000,
+    );
+    if (result.code !== 0) {
+      throw new Error(
+        `Failed to inspect image volumes: ${result.stderr || result.stdout}`,
+      );
+    }
+    try {
+      return Object.keys(JSON.parse(result.stdout.trim() || "null") ?? {});
+    } catch {
+      throw new Error("Could not parse image volumes from remote daemon");
+    }
+  }
+
   async deployApp(opts: {
     name: string;
     image: string;

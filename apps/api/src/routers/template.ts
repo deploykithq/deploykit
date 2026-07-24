@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 
 import { router, protectedProcedure } from "../trpc";
+import { volumePathSlug } from "../lib/volumes";
 
 import { applicationRouter } from "./application";
 import { databaseRouter } from "./database";
@@ -61,12 +62,10 @@ export const templateRouter = router({
 
         // Persist requested container paths as deterministic named volumes,
         // so data survives redeploys (volume name is stable per app + path).
-        const volumes = (resource.volumes ?? []).map((containerPath) => {
-          const slug =
-            containerPath.replace(/^\/+/, "").replace(/[^a-zA-Z0-9_.-]+/g, "-") ||
-            "data";
-          return `dk-${resourceName}-${slug}:${containerPath}`;
-        });
+        const volumes = (resource.volumes ?? []).map(
+          (containerPath) =>
+            `dk-${resourceName}-${volumePathSlug(containerPath)}:${containerPath}`,
+        );
 
         const created = await appCaller.create({
           projectId: input.projectId,
