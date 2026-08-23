@@ -2,7 +2,7 @@ import { memo } from "react";
 import { Box, Database } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 
-import { STATUS_DOT } from "@server/infrastructure/ui/constants/server.module.constants";
+import { STATUS_DOT } from "@server/infrastructure/ui/constants/server.constants";
 
 interface ServerServicesPropsI {
   applications: Array<{

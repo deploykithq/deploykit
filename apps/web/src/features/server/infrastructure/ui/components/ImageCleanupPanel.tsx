@@ -1,30 +1,30 @@
-import { memo, useState } from "react";
+import { memo } from "react";
 import { Layers, Trash2 } from "lucide-react";
 
-import { Card, Button } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Card } from "@shared/components/card";
 
-import { trpc } from "@lib/trpc";
+import { useImageCleanup } from "@server/infrastructure/ui/hooks/useImageCleanup";
 
-import { fmtBytes } from "@/features/server/infrastructure/ui/utils/server.utils";
+import { fmtBytes } from "@server/infrastructure/ui/utils/server.utils";
 
-interface ImageCleanupPanelPropsI {
-  servers: any[];
-  open: boolean;
-  onClose: () => void;
-}
+import type { ImageCleanupPanelPropsI } from "@server/infrastructure/ui/interfaces/server.interfaces";
 
 export const ImageCleanupPanel: React.FC<ImageCleanupPanelPropsI> = memo(
-  function ImageCleanupPanel({ servers, open, onClose }) {
-    const [keep, setKeep] = useState<number>(3);
-    const [dryRun, setDryRun] = useState<boolean>(true);
-    const [results, setResults] = useState<any[] | null>(null);
-
-    const pruneMutation = trpc.server.pruneImagesAll.useMutation({
-      onSuccess: (data) => setResults(data),
-    });
-
-    const totalRemoved = results?.reduce((s, r) => s + r.imagesRemoved, 0) ?? 0;
-    const totalFreed = results?.reduce((s, r) => s + r.bytesFreed, 0) ?? 0;
+  function ImageCleanupPanel({ open, onClose }) {
+    const {
+      keep,
+      setKeep,
+      dryRun,
+      setDryRun,
+      results,
+      setResults,
+      totalRemoved,
+      totalFreed,
+      pruning,
+      error,
+      runPrune,
+    } = useImageCleanup();
 
     if (!open) return null;
 
@@ -89,20 +89,13 @@ export const ImageCleanupPanel: React.FC<ImageCleanupPanelPropsI> = memo(
           {/* Action */}
           <div className="flex items-center gap-3">
             <Button
-              onClick={() => {
-                setResults(null);
-                pruneMutation.mutate({ keep, dryRun });
-              }}
-              disabled={pruneMutation.isPending}
+              onClick={runPrune}
+              disabled={pruning}
               variant={dryRun ? "secondary" : "primary"}
               size="sm"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              {pruneMutation.isPending
-                ? "Running…"
-                : dryRun
-                  ? "Preview"
-                  : "Clean now"}
+              {pruning ? "Running…" : dryRun ? "Preview" : "Clean now"}
             </Button>
             {results && (
               <Button
@@ -116,9 +109,7 @@ export const ImageCleanupPanel: React.FC<ImageCleanupPanelPropsI> = memo(
           </div>
 
           {/* Error */}
-          {pruneMutation.error && (
-            <p className="text-xs text-danger">{pruneMutation.error.message}</p>
-          )}
+          {error && <p className="text-xs text-danger">{error.message}</p>}
 
           {/* Results */}
           {results && (

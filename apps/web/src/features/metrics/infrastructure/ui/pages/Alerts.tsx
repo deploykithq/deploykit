@@ -1,33 +1,32 @@
-import { memo, useMemo, useState } from "react";
-import { Bell, BellOff, Plus, ChevronDown, ChevronRight } from "lucide-react";
+import { memo } from "react";
+import { Bell, BellOff, ChevronDown, ChevronRight, Plus } from "lucide-react";
 
-import { Card, Button, EmptyState } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Card } from "@shared/components/card";
+import { EmptyState } from "@shared/components/empty-state";
+
 import {
-  StatsBanner,
-  EventRow,
   CreateRuleModal,
+  EventRow,
   RuleCard,
+  StatsBanner,
 } from "@metrics/infrastructure/ui/components";
 
-import { trpc } from "@lib/trpc";
+import { useAlerts } from "@metrics/infrastructure/ui/hooks/useAlerts";
 
 export const AlertsPage: React.FC = memo(function AlertsPage() {
-  const [showCreate, setShowCreate] = useState(false);
-  const [showResolved, setShowResolved] = useState(false);
-  const [rulesOpen, setRulesOpen] = useState(true);
-
-  const { data: events, isLoading: eventsLoading } =
-    trpc.metrics.recentEvents.useQuery(
-      { limit: 100 },
-      { refetchInterval: 30_000 },
-    );
-  const { data: rules, isLoading: rulesLoading } =
-    trpc.metrics.listRules.useQuery();
-
-  const visibleEvents = useMemo(
-    () => (showResolved ? events : events?.filter((e) => !e.resolvedAt)),
-    [events, showResolved],
-  );
+  const {
+    showCreate,
+    setShowCreate,
+    showResolved,
+    setShowResolved,
+    rulesOpen,
+    setRulesOpen,
+    visibleEvents,
+    eventsLoading,
+    rules,
+    rulesLoading,
+  } = useAlerts();
 
   return (
     <div className="space-y-6">

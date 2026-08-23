@@ -1,24 +1,29 @@
-import React, { memo, useState } from "react";
+import { memo } from "react";
 import {
+  AlertTriangle,
+  CheckCircle,
+  Container,
+  Cpu,
+  Download,
+  HardDrive,
+  Key,
+  MemoryStick,
+  Monitor,
+  RefreshCw,
   Server,
   Trash2,
-  RefreshCw,
-  AlertTriangle,
-  Monitor,
-  Key,
-  CheckCircle,
-  Cpu,
-  HardDrive,
-  MemoryStick,
-  Download,
-  Container,
 } from "lucide-react";
 
-import { Card, Button, StatusBadge, ConfirmDialog } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Card } from "@shared/components/card";
+import { ConfirmDialog } from "@shared/components/confirm-dialog";
+import { StatusBadge } from "@shared/components/status-badge";
+
 import { ServerServices } from "@server/infrastructure/ui/components";
 
-import { timeAgo, formatBytes } from "@lib/utils";
-import { trpc } from "@lib/trpc";
+import { useServerCard } from "@server/infrastructure/ui/hooks/useServerCard";
+
+import { formatBytes, timeAgo } from "@lib/utils";
 
 interface ServerCardPropsI {
   server: any;
@@ -31,23 +36,17 @@ export const ServerCard: React.FC<ServerCardPropsI> = memo(function ServerCard({
   isAdmin,
   onDelete,
 }) {
-  const utils = trpc.useUtils();
-  const [showInstallConfirm, setShowInstallConfirm] = useState(false);
-
-  const healthCheckMutation = trpc.server.healthCheck.useMutation({
-    onSuccess: () => utils.server.list.invalidate(),
-  });
-
-  const installDockerMutation = trpc.server.installDocker.useMutation({
-    onSuccess: () => {
-      utils.server.list.invalidate();
-      setShowInstallConfirm(false);
-    },
-  });
-
-  const healthResult = healthCheckMutation.data;
-  const isChecking = healthCheckMutation.isPending;
-  const isInstalling = installDockerMutation.isPending;
+  const {
+    showInstallConfirm,
+    setShowInstallConfirm,
+    healthResult,
+    isChecking,
+    isInstalling,
+    installSucceeded,
+    installResult,
+    runHealthCheck,
+    installDocker,
+  } = useServerCard();
 
   const showInstallDocker =
     healthResult &&
@@ -105,7 +104,7 @@ export const ServerCard: React.FC<ServerCardPropsI> = memo(function ServerCard({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => healthCheckMutation.mutate({ id: server.id })}
+                onClick={() => runHealthCheck(server.id)}
                 disabled={isChecking}
                 title="Check health"
               >
@@ -219,18 +218,18 @@ export const ServerCard: React.FC<ServerCardPropsI> = memo(function ServerCard({
         )}
 
         {/* Install result */}
-        {installDockerMutation.isSuccess && installDockerMutation.data && (
+        {installSucceeded && installResult && (
           <div className="mt-3 pt-3 border-t border-border">
-            {installDockerMutation.data.success ? (
+            {installResult.success ? (
               <div className="flex items-center gap-2 p-2.5 rounded-lg bg-success/10 text-success text-xs">
                 <CheckCircle className="w-3.5 h-3.5" />
-                Docker {installDockerMutation.data.version} installed
+                Docker {installResult.version} installed
                 successfully! Run health check to verify.
               </div>
             ) : (
               <div className="flex items-center gap-2 p-2.5 rounded-lg bg-danger/10 text-danger text-xs">
                 <AlertTriangle className="w-3.5 h-3.5" />
-                {installDockerMutation.data.error}
+                {installResult.error}
               </div>
             )}
           </div>
@@ -261,7 +260,7 @@ export const ServerCard: React.FC<ServerCardPropsI> = memo(function ServerCard({
       <ConfirmDialog
         open={showInstallConfirm}
         onClose={() => setShowInstallConfirm(false)}
-        onConfirm={() => installDockerMutation.mutate({ id: server.id })}
+        onConfirm={() => installDocker(server.id)}
         title="Install Docker"
         description={`This will run the official Docker install script (https://get.docker.com) on ${server.name} (${server.host}). It requires root or sudo access. Continue?`}
         confirmText="Install"

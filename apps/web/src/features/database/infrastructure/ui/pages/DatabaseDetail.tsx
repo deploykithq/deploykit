@@ -1,11 +1,13 @@
-import React, { memo, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { dbDetailRoute } from "@/router";
 import { ArrowLeft, Play, Square, Trash2 } from "lucide-react";
 
-import { useDatabaseActions } from "@database/infrastructure/ui/hooks/useDatabaseActions";
+import { dbDetailRoute } from "@/router";
 
-import { Button, StatusBadge, ConfirmDialog } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { ConfirmDialog } from "@shared/components/confirm-dialog";
+import { StatusBadge } from "@shared/components/status-badge";
+
 import {
   BackupsTab,
   ConnectionTab,
@@ -13,16 +15,18 @@ import {
   MonitoringTab,
 } from "@database/infrastructure/ui/components";
 
+import { useDatabaseActions } from "@database/infrastructure/ui/hooks/useDatabaseActions";
+import { useDatabaseDetail } from "@database/infrastructure/ui/hooks/useDatabaseDetail";
+
 import { useAuthStore } from "@lib/auth";
-import { trpc } from "@lib/trpc";
 import { cn } from "@lib/utils";
 
 import {
   DB_TYPE_EMOJI,
   TABS,
-} from "@database/infrastructure/ui/constants/database.module.constants";
-import type { TabT } from "@database/infrastructure/ui/types/database.module.types";
-import type { DatabaseI } from "@database/infrastructure/ui/interfaces/database.module.interfaces";
+} from "@database/infrastructure/ui/constants/database.constants";
+
+import type { TabT } from "@database/infrastructure/ui/interfaces/database.interfaces";
 
 export const DatabaseDetailPage: React.FC = () => {
   const { projectId, dbId: databaseId } = dbDetailRoute.useParams();
@@ -35,13 +39,7 @@ export const DatabaseDetailPage: React.FC = () => {
   const canWrite = useAuthStore((s) => s.canWrite)();
   const isAdmin = useAuthStore((s) => s.isAdmin)();
 
-  const { data: rawDb, isLoading } = trpc.database.byId.useQuery({
-    id: databaseId,
-  });
-
-  // Cast at the tRPC boundary: the server returns `type` as plain string,
-  // but we know it will always be one of our DatabaseType values.
-  const db = rawDb as DatabaseI | undefined;
+  const { db, isLoading } = useDatabaseDetail(databaseId);
 
   const { start, stop, remove } = useDatabaseActions(databaseId, onBack);
 

@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo } from "react";
 import {
   Area,
   AreaChart,
@@ -9,19 +9,20 @@ import {
   YAxis,
 } from "recharts";
 
-import { trpc } from "@lib/trpc";
+import { useMetricsTrend } from "@metrics/infrastructure/ui/hooks/useMetricsTrend";
 
-const RANGES = ["1h", "6h", "24h", "7d", "30d"] as const;
-type Range = (typeof RANGES)[number];
+import {
+  CPU_COLOR,
+  MEM_COLOR,
+  TREND_RANGES,
+} from "@metrics/infrastructure/ui/constants/metrics.constants";
 
-const CPU_COLOR = "#378ADD";
-const MEM_COLOR = "#1D9E75";
+import type {
+  MetricsTrendChartPropsI,
+  TrendRangeT,
+} from "@metrics/infrastructure/ui/interfaces/metrics.interfaces";
 
-interface MetricsTrendChartPropsI {
-  serviceId: string;
-}
-
-function formatTick(ts: number, range: Range): string {
+function formatTick(ts: number, range: TrendRangeT): string {
   const d = new Date(ts);
   if (range === "7d" || range === "30d") {
     return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -34,14 +35,8 @@ function formatTick(ts: number, range: Range): string {
 
 export const MetricsTrendChart: React.FC<MetricsTrendChartPropsI> = memo(
   function MetricsTrendChart({ serviceId }) {
-    const [range, setRange] = useState<Range>("24h");
-
-    const { data, isLoading } = trpc.metrics.timeseries.useQuery(
-      { serviceId, range },
-      { refetchInterval: 30_000 },
-    );
-
-    const points = data?.points ?? [];
+    const { range, setRange, isLoading, points, resolution } =
+      useMetricsTrend(serviceId);
 
     return (
       <div className="bg-surface-1 border border-border rounded-xl p-4 space-y-3">
@@ -50,7 +45,7 @@ export const MetricsTrendChart: React.FC<MetricsTrendChartPropsI> = memo(
             Usage history
           </h3>
           <div className="flex gap-1">
-            {RANGES.map((r) => (
+            {TREND_RANGES.map((r) => (
               <button
                 key={r}
                 type="button"
@@ -166,9 +161,9 @@ export const MetricsTrendChart: React.FC<MetricsTrendChartPropsI> = memo(
             />
             Memory
           </span>
-          {data?.resolution && (
+          {resolution && (
             <span className="ml-auto">
-              {data.resolution === "1m" ? "1-minute" : "1-hour"} resolution
+              {resolution === "1m" ? "1-minute" : "1-hour"} resolution
             </span>
           )}
         </div>

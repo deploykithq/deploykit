@@ -1,30 +1,20 @@
-import { useMemo, useState } from "react";
 import { Loader2, Rocket } from "lucide-react";
-import type { Template } from "@deploykit/shared";
 
-import { Button, Card } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Card } from "@shared/components/card";
 
-import { trpc } from "@lib/trpc";
-import {
-  getTemplateIcon,
-  CATEGORY_LABELS,
-  CATEGORY_ORDER,
-} from "@templates/infrastructure/ui/constants/template.icons";
 import { DeployTemplateModal } from "@templates/infrastructure/ui/components/DeployTemplateModal";
 
-export const TemplatesPage = () => {
-  const { data: templates, isLoading } = trpc.template.list.useQuery();
-  const [selected, setSelected] = useState<Template | null>(null);
+import { useTemplates } from "@templates/infrastructure/ui/hooks/useTemplates";
 
-  const grouped = useMemo(() => {
-    const map = new Map<string, Template[]>();
-    for (const t of templates ?? []) {
-      const list = map.get(t.category) ?? [];
-      list.push(t);
-      map.set(t.category, list);
-    }
-    return map;
-  }, [templates]);
+import {
+  CATEGORY_LABELS,
+  CATEGORY_ORDER,
+  getTemplateIcon,
+} from "@templates/infrastructure/ui/constants/templates.constants";
+
+export const TemplatesPage = () => {
+  const { isLoading, grouped, selected, setSelected } = useTemplates();
 
   if (isLoading) {
     return (

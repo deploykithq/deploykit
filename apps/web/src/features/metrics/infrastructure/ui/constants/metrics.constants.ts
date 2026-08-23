@@ -29,6 +29,14 @@ const SERVICE_TYPE_OPTIONS = [
   { value: "database", label: "Database" },
 ];
 
+const TREND_RANGES = ["1h", "6h", "24h", "7d", "30d"] as const;
+
+const CPU_COLOR = "#378ADD";
+const MEM_COLOR = "#1D9E75";
+
+/** Cada cuánto se refrescan métricas, eventos y estadísticas de alertas. */
+const METRICS_REFETCH_MS = 30_000;
+
 export {
   METRIC_OPTIONS,
   METRIC_LABELS,
@@ -36,4 +44,8 @@ export {
   CHANNEL_OPTIONS,
   CHANNEL_LABELS,
   SERVICE_TYPE_OPTIONS,
+  TREND_RANGES,
+  CPU_COLOR,
+  MEM_COLOR,
+  METRICS_REFETCH_MS,
 };

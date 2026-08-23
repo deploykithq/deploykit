@@ -1,79 +1,25 @@
-import React, { memo, useState } from "react";
+import { memo } from "react";
 
-import { Button, Input, Select, Modal } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Input } from "@shared/components/input";
+import { Modal } from "@shared/components/modal";
+import { Select } from "@shared/components/select";
 
-import { trpc } from "@lib/trpc";
+import { useCreateRuleForm } from "@metrics/infrastructure/ui/hooks/useCreateRuleForm";
 
 import {
+  CHANNEL_OPTIONS,
   METRIC_OPTIONS,
   OPERATOR_OPTIONS,
-  CHANNEL_OPTIONS,
   SERVICE_TYPE_OPTIONS,
 } from "@metrics/infrastructure/ui/constants/metrics.constants";
 
-interface CreateRuleModalPropsI {
-  open: boolean;
-  onClose: () => void;
-  onCreated: () => void;
-}
+import type { CreateRuleModalPropsI } from "@metrics/infrastructure/ui/interfaces/metrics.interfaces";
 
 export const CreateRuleModal: React.FC<CreateRuleModalPropsI> = memo(
   function CreateRuleModal({ open, onClose, onCreated }) {
-    const utils = trpc.useUtils();
-    const [form, setForm] = useState({
-      serviceType: "application" as "application" | "database",
-      serviceId: "",
-      metric: "cpu",
-      operator: "gt",
-      threshold: 85,
-      channel: "ui",
-      channelUrl: "",
-      cooldown: 15,
-    });
-
-    // Build service list from existing projects
-    const { data: projects } = trpc.project.list.useQuery();
-    const allServices = (projects ?? []).flatMap((p) => [
-      ...(p.applications ?? []).map((a) => ({
-        id: a.id,
-        name: a.name,
-        type: "application" as const,
-      })),
-      ...(p.databases ?? []).map((d) => ({
-        id: d.id,
-        name: d.name,
-        type: "database" as const,
-      })),
-    ]);
-
-    const serviceOptions = allServices
-      .filter((s) => s.type === form.serviceType)
-      .map((s) => ({ value: s.id, label: s.name }));
-
-    const mutation = trpc.metrics.createRule.useMutation({
-      onSuccess: () => {
-        utils.metrics.listRules.invalidate();
-        utils.metrics.alertStats.invalidate();
-        onCreated();
-        onClose();
-      },
-    });
-
-    const handleSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      const svc = allServices.find((s) => s.id === form.serviceId);
-      mutation.mutate({
-        serviceType: form.serviceType,
-        serviceId: form.serviceId,
-        serviceName: svc?.name,
-        metric: form.metric as any,
-        operator: form.operator as any,
-        threshold: form.threshold,
-        channel: form.channel as any,
-        channelConfig: form.channelUrl ? { url: form.channelUrl } : undefined,
-        cooldownMinutes: form.cooldown,
-      });
-    };
+    const { form, setForm, serviceOptions, creating, error, handleSubmit } =
+      useCreateRuleForm(onCreated, onClose);
 
     const needsUrl = form.channel === "slack" || form.channel === "webhook";
 
@@ -167,8 +113,8 @@ export const CreateRuleModal: React.FC<CreateRuleModalPropsI> = memo(
             />
           )}
 
-          {mutation.error && (
-            <p className="text-sm text-danger">{mutation.error.message}</p>
+          {error && (
+            <p className="text-sm text-danger">{error.message}</p>
           )}
 
           <div className="flex justify-end gap-2 pt-2">
@@ -177,9 +123,9 @@ export const CreateRuleModal: React.FC<CreateRuleModalPropsI> = memo(
             </Button>
             <Button
               type="submit"
-              disabled={mutation.isPending || !form.serviceId}
+              disabled={creating || !form.serviceId}
             >
-              {mutation.isPending ? "Creating…" : "Create rule"}
+              {creating ? "Creating…" : "Create rule"}
             </Button>
           </div>
         </form>

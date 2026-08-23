@@ -2,11 +2,11 @@ import { memo } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Server } from "lucide-react";
 
-import { Card } from "@shared/components";
+import { Card } from "@shared/components/card";
 
 import { formatBytes } from "@lib/utils";
 
-import type { DashboardServerI } from "@dashboard/infrastructure/ui/types/dashboard.module.types";
+import type { DashboardServerI } from "@dashboard/infrastructure/ui/interfaces/dashboard.interfaces";
 
 interface ServerOverviewPropsI {
   servers: DashboardServerI[];

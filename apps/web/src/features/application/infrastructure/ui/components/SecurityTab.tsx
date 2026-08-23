@@ -1,10 +1,11 @@
 import { memo, useMemo, useState } from "react";
 import { Search, ShieldCheck, ExternalLink } from "lucide-react";
 
-import { Card } from "@shared/components";
+import { Card } from "@shared/components/card";
 import { VulnerabilityBadge } from "@application/infrastructure/ui/components/VulnerabilityBadge";
 
-import { trpc } from "@lib/trpc";
+import { useSecurityTab } from "@application/infrastructure/ui/hooks/useSecurityTab";
+
 import { timeAgo } from "@lib/utils";
 
 interface SecurityTabPropsI {
@@ -22,22 +23,16 @@ const SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"] as const;
 
 export const SecurityTab: React.FC<SecurityTabPropsI> = memo(
   function SecurityTab({ applicationId }) {
-    const { data: deployments } = trpc.application.deployments.useQuery({
-      id: applicationId,
-    });
-
-    // Deployments that actually ran a scan (have a status set).
-    const scanned = useMemo(
-      () => (deployments ?? []).filter((d) => !!d.scanStatus),
-      [deployments],
-    );
-
-    const [selectedId, setSelectedId] = useState<string | null>(null);
-    const selected =
-      scanned.find((d) => d.id === selectedId) ?? scanned[0] ?? null;
-
-    const [active, setActive] = useState<Set<string>>(new Set());
-    const [query, setQuery] = useState("");
+    const {
+      deployments,
+      scanned,
+      selected,
+      setSelectedId,
+      active,
+      setActive,
+      query,
+      setQuery,
+    } = useSecurityTab(applicationId);
 
     const summary = selected?.scanResults?.summary;
     const vulns = selected?.scanResults?.top ?? [];

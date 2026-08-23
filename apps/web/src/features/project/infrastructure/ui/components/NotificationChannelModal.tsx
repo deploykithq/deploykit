@@ -1,26 +1,26 @@
-import { useState, useEffect, memo } from "react";
+import { memo } from "react";
 
-import { Modal, Button, Input } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Input } from "@shared/components/input";
+import { Modal } from "@shared/components/modal";
 
-import { trpc } from "@lib/trpc";
+import { useNotificationChannelForm } from "@project/infrastructure/ui/hooks/useNotificationChannelForm";
+
 import {
   ALL_EVENTS,
   CHANNEL_TYPES,
-} from "@project/infrastructure/ui/constants/project.module.constants";
+} from "@project/infrastructure/ui/constants/project.constants";
 
-type ChannelTypeT = keyof typeof CHANNEL_TYPES;
+import type {
+  ChannelTypeT,
+  EditableChannelI,
+} from "@project/infrastructure/ui/interfaces/project.interfaces";
 
 interface NotificationChannelModalPropsI {
   open: boolean;
   onClose: () => void;
   projectId: string;
-  editChannel?: {
-    id: string;
-    name: string;
-    type: string;
-    config: Record<string, string>;
-    events: string[];
-  } | null;
+  editChannel?: EditableChannelI | null;
 }
 
 export const NotificationChannelModal: React.FC<NotificationChannelModalPropsI> =
@@ -30,90 +30,23 @@ export const NotificationChannelModal: React.FC<NotificationChannelModalPropsI> 
     projectId,
     editChannel,
   }) {
-    const isEditing = !!editChannel;
-    const utils = trpc.useUtils();
-
-    const [name, setName] = useState("");
-    const [type, setType] = useState<ChannelTypeT>("discord");
-    const [config, setConfig] = useState<Record<string, string>>({});
-    const [selectedEvents, setSelectedEvents] = useState<string[]>([
-      "deploy.success",
-      "deploy.failed",
-    ]);
-
-    // Populate form when editing
-    useEffect(() => {
-      if (editChannel) {
-        setName(editChannel.name);
-        setType(editChannel.type as ChannelTypeT);
-        setConfig(editChannel.config);
-        setSelectedEvents(editChannel.events);
-      } else {
-        setName("");
-        setType("discord");
-        setConfig({});
-        setSelectedEvents(["deploy.success", "deploy.failed"]);
-      }
-    }, [editChannel, open]);
-
-    const createMutation = trpc.notification.create.useMutation({
-      onSuccess: () => {
-        utils.notification.list.invalidate({ projectId });
-        onClose();
-      },
-    });
-
-    const updateMutation = trpc.notification.update.useMutation({
-      onSuccess: () => {
-        utils.notification.list.invalidate({ projectId });
-        onClose();
-      },
-    });
-
-    const testMutation = trpc.notification.test.useMutation();
-
-    const isPending = createMutation.isPending || updateMutation.isPending;
-    const error = createMutation.error || updateMutation.error;
-
-    const channelConfig = CHANNEL_TYPES[type];
-
-    const handleConfigChange = (key: string, value: string) => {
-      setConfig((prev) => ({ ...prev, [key]: value }));
-    };
-
-    const toggleEvent = (event: string) => {
-      setSelectedEvents((prev) =>
-        prev.includes(event)
-          ? prev.filter((e) => e !== event)
-          : [...prev, event],
-      );
-    };
-
-    const handleSubmit = () => {
-      if (!name.trim() || selectedEvents.length === 0) return;
-
-      if (isEditing) {
-        updateMutation.mutate({
-          id: editChannel!.id,
-          name: name.trim(),
-          config,
-          events: selectedEvents as any,
-        });
-      } else {
-        createMutation.mutate({
-          projectId,
-          name: name.trim(),
-          type,
-          config,
-          events: selectedEvents as any,
-          enabled: true,
-        });
-      }
-    };
-
-    const handleTest = () => {
-      testMutation.mutate({ type, config });
-    };
+    const {
+      isEditing,
+      name,
+      setName,
+      type,
+      config,
+      selectedEvents,
+      channelConfig,
+      isPending,
+      error,
+      testMutation,
+      selectChannelType,
+      handleConfigChange,
+      toggleEvent,
+      handleSubmit,
+      handleTest,
+    } = useNotificationChannelForm(projectId, open, onClose, editChannel);
 
     return (
       <Modal
@@ -141,10 +74,7 @@ export const NotificationChannelModal: React.FC<NotificationChannelModalPropsI> 
                 {(Object.keys(CHANNEL_TYPES) as ChannelTypeT[]).map((t) => (
                   <button
                     key={t}
-                    onClick={() => {
-                      setType(t);
-                      setConfig({});
-                    }}
+                    onClick={() => selectChannelType(t)}
                     className={`px-3 py-2 rounded-lg border text-sm text-left transition-colors ${
                       type === t
                         ? "border-accent bg-accent/10 text-accent"

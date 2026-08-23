@@ -1,40 +1,36 @@
-import { useState } from "react";
-import { Server, Plus, Monitor, Layers } from "lucide-react";
+import { Layers, Monitor, Plus, Server } from "lucide-react";
 
-import { Card, Button, EmptyState, ConfirmDialog } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Card } from "@shared/components/card";
+import { ConfirmDialog } from "@shared/components/confirm-dialog";
+import { EmptyState } from "@shared/components/empty-state";
+
 import {
-  ServerCard,
-  ImageCleanupPanel,
   AddServerModal,
+  ImageCleanupPanel,
+  ServerCard,
 } from "@server/infrastructure/ui/components";
 
-import { useAuthStore } from "@lib/auth";
-import { trpc } from "@lib/trpc";
+import { useServers } from "@server/infrastructure/ui/hooks/useServers";
 
 export const ServersPage: React.FC = () => {
-  const utils = trpc.useUtils();
-  const isAdmin = useAuthStore((s) => s.isAdmin)();
-  const { data: servers, isLoading } = trpc.server.list.useQuery();
-
-  const [showAddServer, setShowAddServer] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<{
-    id: string;
-    name: string;
-  } | null>(null);
-
-  const createLocalMutation = trpc.server.createLocal.useMutation({
-    onSuccess: () => utils.server.list.invalidate(),
-  });
-
-  const deleteMutation = trpc.server.delete.useMutation({
-    onSuccess: () => {
-      utils.server.list.invalidate();
-      setDeleteTarget(null);
-    },
-  });
-
-  const hasLocal = servers?.some((s) => s.isLocal);
-  const [showCleanup, setShowCleanup] = useState(false);
+  const {
+    servers,
+    isLoading,
+    isAdmin,
+    hasLocal,
+    showAddServer,
+    setShowAddServer,
+    showCleanup,
+    setShowCleanup,
+    deleteTarget,
+    setDeleteTarget,
+    creatingLocal,
+    createLocalServer,
+    deleting,
+    handleServerCreated,
+    handleConfirmDelete,
+  } = useServers();
 
   return (
     <div className="space-y-6">
@@ -52,13 +48,11 @@ export const ServersPage: React.FC = () => {
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => createLocalMutation.mutate()}
-                disabled={createLocalMutation.isPending}
+                onClick={createLocalServer}
+                disabled={creatingLocal}
               >
                 <Monitor className="w-3.5 h-3.5" />
-                {createLocalMutation.isPending
-                  ? "Adding..."
-                  : "Add Local Server"}
+                {creatingLocal ? "Adding..." : "Add Local Server"}
               </Button>
             )}
             <Button
@@ -90,8 +84,8 @@ export const ServersPage: React.FC = () => {
               isAdmin ? (
                 <Button
                   size="sm"
-                  onClick={() => createLocalMutation.mutate()}
-                  disabled={createLocalMutation.isPending}
+                  onClick={createLocalServer}
+                  disabled={creatingLocal}
                 >
                   <Monitor className="w-3.5 h-3.5" />
                   Add Local Server
@@ -119,16 +113,12 @@ export const ServersPage: React.FC = () => {
       <AddServerModal
         open={showAddServer}
         onClose={() => setShowAddServer(false)}
-        onCreated={() => {
-          setShowAddServer(false);
-          utils.server.list.invalidate();
-        }}
+        onCreated={handleServerCreated}
       />
 
       {/* Image Cleanup Panel */}
       {isAdmin && (
         <ImageCleanupPanel
-          servers={servers ?? []}
           open={showCleanup}
           onClose={() => setShowCleanup(false)}
         />
@@ -138,13 +128,11 @@ export const ServersPage: React.FC = () => {
       <ConfirmDialog
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={() =>
-          deleteTarget && deleteMutation.mutate({ id: deleteTarget.id })
-        }
+        onConfirm={handleConfirmDelete}
         title="Delete Server"
         description={`Remove "${deleteTarget?.name}" from DeployKit? This won't affect running containers on the server.`}
         confirmText="Remove Server"
-        isPending={deleteMutation.isPending}
+        isPending={deleting}
       />
     </div>
   );

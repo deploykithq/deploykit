@@ -3,7 +3,7 @@ import { Copy, Check } from "lucide-react";
 
 import { cn } from "@lib/utils";
 
-import { COPY_FEEDBACK_MS } from "@database/infrastructure/ui/constants/database.module.constants";
+import { COPY_FEEDBACK_MS } from "@database/infrastructure/ui/constants/database.constants";
 
 interface ConnectionFieldPropsI {
   label: string;

@@ -1,62 +1,14 @@
-import { useParams } from "@tanstack/react-router";
-import { CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
+import { Uptime } from "@status/infrastructure/ui/components";
 
-import { trpc } from "@lib/trpc";
+import { useStatusPage } from "@status/infrastructure/ui/hooks/useStatusPage";
 
-type ServiceStatus = "operational" | "degraded" | "down";
+import {
+  OVERALL_BANNER,
+  STATUS_META,
+} from "@status/infrastructure/ui/constants/status.constants";
 
-const STATUS_META: Record<
-  ServiceStatus,
-  { label: string; color: string; Icon: typeof CheckCircle2 }
-> = {
-  operational: {
-    label: "Operational",
-    color: "text-green-500",
-    Icon: CheckCircle2,
-  },
-  degraded: {
-    label: "Degraded",
-    color: "text-yellow-500",
-    Icon: AlertTriangle,
-  },
-  down: { label: "Down", color: "text-red-500", Icon: XCircle },
-};
-
-const OVERALL_BANNER: Record<ServiceStatus, { text: string; bg: string }> = {
-  operational: {
-    text: "All systems operational",
-    bg: "bg-green-500/10 border-green-500/30 text-green-600",
-  },
-  degraded: {
-    text: "Some systems degraded",
-    bg: "bg-yellow-500/10 border-yellow-500/30 text-yellow-600",
-  },
-  down: {
-    text: "Major outage",
-    bg: "bg-red-500/10 border-red-500/30 text-red-600",
-  },
-};
-
-function Uptime({ label, value }: { label: string; value: number | null }) {
-  return (
-    <div className="text-center">
-      <p className="text-sm font-semibold tabular-nums">
-        {value === null ? "—" : `${value.toFixed(1)}%`}
-      </p>
-      <p className="text-[10px] uppercase tracking-wide text-text-muted">
-        {label}
-      </p>
-    </div>
-  );
-}
-
-export function StatusPage() {
-  const { slug } = useParams({ from: "/status/$slug" });
-
-  const { data, isLoading, error } = trpc.status.getPublic.useQuery(
-    { slug },
-    { refetchInterval: 30_000, retry: false },
-  );
+export const StatusPage: React.FC = () => {
+  const { data, isLoading, error } = useStatusPage();
 
   return (
     <div className="min-h-screen bg-surface-0 text-text-primary flex flex-col items-center px-4 py-12">
@@ -102,9 +54,7 @@ export function StatusPage() {
                       key={s.name}
                       className="bg-surface-1 border border-border rounded-xl px-4 py-3 flex items-center gap-4"
                     >
-                      <meta.Icon
-                        className={`w-5 h-5 shrink-0 ${meta.color}`}
-                      />
+                      <meta.Icon className={`w-5 h-5 shrink-0 ${meta.color}`} />
                       <div className="flex-1 min-w-0">
                         <p className="font-medium truncate">{s.name}</p>
                         <p className={`text-xs ${meta.color}`}>{meta.label}</p>
@@ -121,13 +71,11 @@ export function StatusPage() {
             )}
 
             <footer className="text-center pt-4">
-              <p className="text-[11px] text-text-muted">
-                Powered by DeployKit
-              </p>
+              <p className="text-[11px] text-text-muted">Powered by DeployKit</p>
             </footer>
           </>
         )}
       </div>
     </div>
   );
-}
+};

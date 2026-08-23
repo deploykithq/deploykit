@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { trpc } from "@lib/trpc";
 
-import type { TabT } from "../types/application.module.types";
+import type { TabT } from "@application/infrastructure/ui/interfaces/application.interfaces";
 
 export interface MutationHandleI {
   mutate: (input: any) => void;

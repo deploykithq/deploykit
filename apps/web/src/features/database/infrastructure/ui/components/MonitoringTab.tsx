@@ -3,9 +3,9 @@ import { memo } from "react";
 import { MetricsHistory } from "@metrics/infrastructure/ui/components/MetricsHistory";
 import { MetricsTrendChart } from "@metrics/infrastructure/ui/components/MetricsTrendChart";
 
-import { trpc } from "@lib/trpc";
+import { useDatabaseAlerts } from "@database/infrastructure/ui/hooks/useDatabaseAlerts";
 
-import type { DatabaseI } from "@database/infrastructure/ui/interfaces/database.module.interfaces";
+import type { DatabaseI } from "@database/infrastructure/ui/interfaces/database.interfaces";
 
 interface MonitoringTabPropsI {
   db: DatabaseI;
@@ -14,10 +14,7 @@ interface MonitoringTabPropsI {
 
 export const MonitoringTab: React.FC<MonitoringTabPropsI> = memo(
   function MonitoringTab({ db, databaseId }) {
-    const { data: openAlerts } = trpc.metrics.recentEvents.useQuery(
-      { serviceId: databaseId, onlyOpen: true, limit: 10 },
-      { refetchInterval: 30_000 },
-    );
+    const { openAlerts } = useDatabaseAlerts(databaseId);
 
     return (
       <div className="space-y-4">

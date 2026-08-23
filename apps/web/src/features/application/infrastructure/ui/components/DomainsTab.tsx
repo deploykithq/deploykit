@@ -1,9 +1,12 @@
-import { memo, useState } from "react";
-import { Globe, Trash2, Plus, ExternalLink } from "lucide-react";
+import { memo } from "react";
+import { ExternalLink, Globe, Plus, Trash2 } from "lucide-react";
 
-import { Card, Button, Input, Modal } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Card } from "@shared/components/card";
+import { Input } from "@shared/components/input";
+import { Modal } from "@shared/components/modal";
 
-import { trpc } from "@lib/trpc";
+import { useDomainsTab } from "@application/infrastructure/ui/hooks/useDomainsTab";
 
 interface DomainsTabPropsI {
   app: any;
@@ -14,23 +17,17 @@ export const DomainsTab: React.FC<DomainsTabPropsI> = memo(function DomainsTab({
   app,
   applicationId,
 }) {
-  const utils = trpc.useUtils();
-
-  const [showAdd, setShowAdd] = useState<boolean>(false);
-  const [newDomain, setNewDomain] = useState<string>("");
-  const [newPort, setNewPort] = useState<string>(String(app.port || 3000));
-
-  const addMutation = trpc.application.addDomain.useMutation({
-    onSuccess: () => {
-      utils.application.byId.invalidate({ id: applicationId });
-      setShowAdd(false);
-      setNewDomain("");
-    },
-  });
-
-  const removeMutation = trpc.application.removeDomain.useMutation({
-    onSuccess: () => utils.application.byId.invalidate({ id: applicationId }),
-  });
+  const {
+    showAdd,
+    setShowAdd,
+    newDomain,
+    setNewDomain,
+    newPort,
+    setNewPort,
+    adding,
+    addDomain,
+    removeDomain,
+  } = useDomainsTab(app, applicationId);
 
   const appDomains = app.domains || [];
 
@@ -75,7 +72,7 @@ export const DomainsTab: React.FC<DomainsTabPropsI> = memo(function DomainsTab({
                 <Button
                   variant="danger"
                   size="sm"
-                  onClick={() => removeMutation.mutate({ domainId: d.id })}
+                  onClick={() => removeDomain({ domainId: d.id })}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </Button>
@@ -115,14 +112,14 @@ export const DomainsTab: React.FC<DomainsTabPropsI> = memo(function DomainsTab({
               </Button>
               <Button
                 onClick={() =>
-                  addMutation.mutate({
+                  addDomain({
                     serviceId: applicationId,
                     domain: newDomain,
                     port: parseInt(newPort) || 3000,
                     https: true,
                   })
                 }
-                disabled={!newDomain || addMutation.isPending}
+                disabled={!newDomain || adding}
               >
                 Add Domain
               </Button>

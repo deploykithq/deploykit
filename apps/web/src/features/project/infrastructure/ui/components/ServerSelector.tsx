@@ -1,7 +1,7 @@
 import { memo } from "react";
 import { Server, Monitor } from "lucide-react";
 
-import { trpc } from "@lib/trpc";
+import { useServerSelector } from "@project/infrastructure/ui/hooks/useServerSelector";
 
 interface ServerSelectorPropsI {
   value: string | null;
@@ -11,10 +11,7 @@ interface ServerSelectorPropsI {
 
 export const ServerSelector: React.FC<ServerSelectorPropsI> = memo(
   function ServerSelector({ value, onChange, label = "Deploy Server" }) {
-    const { data: servers } = trpc.server.list.useQuery();
-
-    // Only show connected servers
-    const available = servers?.filter((s) => s.status === "connected") || [];
+    const { available } = useServerSelector();
 
     if (available.length === 0) return null; // Don't show if no servers configured
 

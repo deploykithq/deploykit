@@ -2,7 +2,8 @@ import { Plus } from "lucide-react";
 
 import { useUserList } from "@users/infrastructure/ui/hooks/useUserList";
 
-import { Button, ConfirmDialog } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { ConfirmDialog } from "@shared/components/confirm-dialog";
 import {
   CreateUserModal,
   ResetPasswordModal,

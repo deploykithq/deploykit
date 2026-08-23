@@ -1,14 +1,16 @@
-import { memo, useState } from "react";
-import { Users, Plus, Shield } from "lucide-react";
+import { memo } from "react";
+import { Plus, Shield, Users } from "lucide-react";
 
-import { Button, Card, EmptyState } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Card } from "@shared/components/card";
+import { EmptyState } from "@shared/components/empty-state";
+
 import {
-  MemberCard,
   AddMemberModal,
+  MemberCard,
 } from "@project/infrastructure/ui/components";
 
-import { trpc } from "@lib/trpc";
-import { useAuthStore } from "@lib/auth";
+import { useProjectMembers } from "@project/infrastructure/ui/hooks/useProjectMembers";
 
 interface MembersSectionPropsI {
   projectId: string;
@@ -16,17 +18,8 @@ interface MembersSectionPropsI {
 
 export const MembersSection: React.FC<MembersSectionPropsI> = memo(
   function MembersSection({ projectId }) {
-    const [showModal, setShowModal] = useState(false);
-
-    const globalRole = useAuthStore((s) => s.user?.role);
-
-    const { data: myRole } = trpc.projectMember.myRole.useQuery({ projectId });
-    const { data: members = [], isLoading } = trpc.projectMember.list.useQuery({
-      projectId,
-    });
-
-    const effectiveRole = myRole?.role || globalRole || "viewer";
-    const canManage = effectiveRole === "admin";
+    const { showModal, setShowModal, members, isLoading, canManage } =
+      useProjectMembers(projectId);
 
     return (
       <section>

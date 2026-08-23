@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { trpc } from "@lib/trpc";
 
-import type { RoleValueT } from "@users/infrastructure/ui/types/users.module.types";
+import type { RoleValueT } from "@users/infrastructure/ui/interfaces/users.interfaces";
 
 const DEFAULT_ROLE: RoleValueT = "viewer";
 

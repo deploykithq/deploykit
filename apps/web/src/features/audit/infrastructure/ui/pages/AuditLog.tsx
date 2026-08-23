@@ -1,43 +1,19 @@
-import { memo, useCallback, useDeferredValue, useState } from "react";
-import { Shield, ChevronLeft, ChevronRight } from "lucide-react";
+import { memo } from "react";
+import { ChevronLeft, ChevronRight, Shield } from "lucide-react";
 
-import { Card } from "@shared/components";
+import { Card } from "@shared/components/card";
 
 import {
-  StatsBar,
-  FilterBar,
   EntryRow,
+  FilterBar,
+  StatsBar,
 } from "@audit/infrastructure/ui/components";
 
-import { trpc } from "@lib/trpc";
-import type { FiltersI } from "@audit/infrastructure/ui/types/audit.module.types";
+import { useAuditLog } from "@audit/infrastructure/ui/hooks/useAuditLog";
 
 export const AuditLogPage: React.FC = memo(function AuditLogPage() {
-  const [page, setPage] = useState<number>(1);
-  const [filters, setFilters] = useState<FiltersI>({
-    search: "",
-    resourceType: "",
-    action: "",
-  });
-
-  // Defer the search string so keystrokes update the UI instantly
-  // but only trigger a new API request after React has finished rendering
-  const deferredSearch = useDeferredValue(filters.search);
-
-  const handleFilters = useCallback((f: FiltersI) => {
-    setFilters(f);
-    setPage(1);
-  }, []);
-
-  const { data, isLoading } = trpc.audit.list.useQuery(
-    {
-      page,
-      search: deferredSearch || undefined,
-      resourceType: filters.resourceType || undefined,
-      action: filters.action || undefined,
-    },
-    { placeholderData: (prev) => prev },
-  );
+  const { data, isLoading, page, setPage, filters, handleFilters } =
+    useAuditLog();
 
   return (
     <div className="space-y-6">

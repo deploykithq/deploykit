@@ -1,54 +1,36 @@
-import { memo, useState } from "react";
+import { memo } from "react";
 import { Key } from "lucide-react";
 
-import { Button, Input, Modal, Textarea } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Input } from "@shared/components/input";
+import { Modal } from "@shared/components/modal";
+import { Textarea } from "@shared/components/textarea";
 
-import { trpc } from "@lib/trpc";
+import { useAddServerForm } from "@server/infrastructure/ui/hooks/useAddServerForm";
 
-interface AddServerModalPropsI {
-  open: boolean;
-  onClose: () => void;
-  onCreated: () => void;
-}
+import type { AddServerModalPropsI } from "@server/infrastructure/ui/interfaces/server.interfaces";
 
 export const AddServerModal: React.FC<AddServerModalPropsI> = memo(
   function AddServerModal({ open, onClose, onCreated }) {
-    const [name, setName] = useState<string>("");
-    const [host, setHost] = useState<string>("");
-    const [port, setPort] = useState<string>("22");
-    const [username, setUsername] = useState<string>("root");
-    const [keyMethod, setKeyMethod] = useState<"paste" | "path">("paste");
-    const [sshKeyContent, setSshKeyContent] = useState<string>("");
-    const [sshKeyPath, setSshKeyPath] = useState<string>("");
-
-    const createMutation = trpc.server.create.useMutation({
-      onSuccess: () => {
-        resetForm();
-        onCreated();
-      },
-    });
-
-    const resetForm = () => {
-      setName("");
-      setHost("");
-      setPort("22");
-      setUsername("root");
-      setSshKeyContent("");
-      setSshKeyPath("");
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      createMutation.mutate({
-        name,
-        host,
-        port: parseInt(port),
-        username,
-        sshKeyContent:
-          keyMethod === "paste" && sshKeyContent ? sshKeyContent : undefined,
-        sshKeyPath: keyMethod === "path" && sshKeyPath ? sshKeyPath : undefined,
-      });
-    };
+    const {
+      name,
+      setName,
+      host,
+      setHost,
+      port,
+      setPort,
+      username,
+      setUsername,
+      keyMethod,
+      setKeyMethod,
+      sshKeyContent,
+      setSshKeyContent,
+      sshKeyPath,
+      setSshKeyPath,
+      creating,
+      error,
+      handleSubmit,
+    } = useAddServerForm(onCreated);
 
     return (
       <Modal open={open} onClose={onClose} title="Add Remote Server">
@@ -148,18 +130,14 @@ export const AddServerModal: React.FC<AddServerModalPropsI> = memo(
             </div>
           </div>
 
-          {createMutation.error && (
-            <p className="text-xs text-danger">
-              {createMutation.error.message}
-            </p>
-          )}
+          {error && <p className="text-xs text-danger">{error.message}</p>}
 
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={createMutation.isPending}>
-              {createMutation.isPending ? "Adding..." : "Add Server"}
+            <Button type="submit" disabled={creating}>
+              {creating ? "Adding..." : "Add Server"}
             </Button>
           </div>
         </form>

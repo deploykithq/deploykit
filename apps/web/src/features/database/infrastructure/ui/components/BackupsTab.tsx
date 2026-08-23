@@ -11,13 +11,17 @@ import {
 
 import { useBackupManager } from "@database/infrastructure/ui/hooks/useBackupManager";
 
-import { Card, Button, Input, Select, ConfirmDialog } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Card } from "@shared/components/card";
+import { ConfirmDialog } from "@shared/components/confirm-dialog";
+import { Input } from "@shared/components/input";
+import { Select } from "@shared/components/select";
 
 import { formatBytes, timeAgo, cn } from "@lib/utils";
 import { useAuthStore } from "@lib/auth";
 
-import { CRON_PRESETS } from "@database/infrastructure/ui/constants/database.module.constants";
-import type { DatabaseI } from "@database/infrastructure/ui/interfaces/database.module.interfaces";
+import { CRON_PRESETS } from "@database/infrastructure/ui/constants/database.constants";
+import type { DatabaseI } from "@database/infrastructure/ui/interfaces/database.interfaces";
 
 interface BackupsTabPropsI {
   db: DatabaseI;

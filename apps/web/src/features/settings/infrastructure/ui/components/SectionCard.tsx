@@ -1,7 +1,7 @@
 import { memo } from "react";
 import type { LucideIcon } from "lucide-react";
 
-import { Card } from "@shared/components";
+import { Card } from "@shared/components/card";
 
 interface SectionCardPropsI {
   icon: LucideIcon;

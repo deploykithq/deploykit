@@ -1,12 +1,12 @@
 import { memo } from "react";
 import { Activity } from "lucide-react";
 
-import { Card } from "@shared/components";
+import { Card } from "@shared/components/card";
 
 import { timeAgo } from "@lib/utils";
 
-import { ACTION_CONFIG } from "@dashboard/infrastructure/ui/constants/dashboard.module.constants";
-import type { DashboardActivityI } from "@dashboard/infrastructure/ui/types/dashboard.module.types";
+import { ACTION_CONFIG } from "@dashboard/infrastructure/ui/constants/dashboard.constants";
+import type { DashboardActivityI } from "@dashboard/infrastructure/ui/interfaces/dashboard.interfaces";
 
 interface ActivityFeedPropsI {
   entries: DashboardActivityI[];

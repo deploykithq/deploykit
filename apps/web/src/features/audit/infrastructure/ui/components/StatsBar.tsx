@@ -1,20 +1,20 @@
 import { Activity } from "lucide-react";
 
-import { Card } from "@shared/components";
+import { Card } from "@shared/components/card";
 
-import { trpc } from "@lib/trpc";
+import { useAuditStats } from "@audit/infrastructure/ui/hooks/useAuditStats";
 
 export const StatsBar = () => {
-  const { data } = trpc.audit.stats.useQuery();
+  const { stats } = useAuditStats();
 
-  if (!data) return null;
+  if (!stats) return null;
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
       {[
-        { label: "Events (24h)", value: data.last24h },
-        { label: "Events (7d)", value: data.last7d },
-        { label: "Deploys (7d)", value: data.deployments7d },
+        { label: "Events (24h)", value: stats.last24h },
+        { label: "Events (7d)", value: stats.last7d },
+        { label: "Deploys (7d)", value: stats.deployments7d },
       ].map((s) => (
         <Card key={s.label}>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

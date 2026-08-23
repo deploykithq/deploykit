@@ -1,12 +1,12 @@
 import { memo } from "react";
 import { Shield } from "lucide-react";
 
-import { Card } from "@shared/components";
+import { Card } from "@shared/components/card";
 import { ConnectionField } from "@database/infrastructure/ui/components";
 
 import { useAuthStore } from "@lib/auth";
 
-import type { DatabaseI } from "@database/infrastructure/ui/interfaces/database.module.interfaces";
+import type { DatabaseI } from "@database/infrastructure/ui/interfaces/database.interfaces";
 
 interface ConnectionTabPropsI {
   db: DatabaseI;

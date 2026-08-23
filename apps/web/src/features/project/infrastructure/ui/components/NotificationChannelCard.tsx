@@ -1,24 +1,25 @@
-import { memo, useState } from "react";
+import { memo } from "react";
 import {
   Bell,
   BellOff,
-  Trash2,
-  Send,
-  Pencil,
   CheckCircle2,
-  XCircle,
   Loader2,
+  Pencil,
+  Send,
+  Trash2,
+  XCircle,
 } from "lucide-react";
 
-import { Button, Card, ConfirmDialog } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Card } from "@shared/components/card";
+import { ConfirmDialog } from "@shared/components/confirm-dialog";
 
-import { trpc } from "@lib/trpc";
-import { useAuthStore } from "@lib/auth";
+import { useNotificationChannelCard } from "@project/infrastructure/ui/hooks/useNotificationChannelCard";
 
 import {
   CHANNEL_COLORS,
   CHANNEL_ICONS,
-} from "@project/infrastructure/ui/constants/project.module.constants";
+} from "@project/infrastructure/ui/constants/project.constants";
 
 interface NotificationChannelCardPropsI {
   channel: {
@@ -35,37 +36,18 @@ interface NotificationChannelCardPropsI {
 
 export const NotificationChannelCard: React.FC<NotificationChannelCardPropsI> =
   memo(function NotificationChannelCard({ channel, projectId, onEdit }) {
-    const [showDelete, setShowDelete] = useState(false);
-    const [testResult, setTestResult] = useState<{
-      success: boolean;
-      error?: string;
-    } | null>(null);
-
-    const canWrite = useAuthStore((s) => s.canWrite)();
-    const utils = trpc.useUtils();
+    const {
+      showDelete,
+      setShowDelete,
+      testResult,
+      canWrite,
+      toggleMutation,
+      deleteMutation,
+      testMutation,
+    } = useNotificationChannelCard(projectId);
 
     const Icon = CHANNEL_ICONS[channel.type] || Bell;
     const colorClass = CHANNEL_COLORS[channel.type] || "text-text-secondary";
-
-    const toggleMutation = trpc.notification.toggle.useMutation({
-      onSuccess: () => {
-        utils.notification.list.invalidate({ projectId });
-      },
-    });
-
-    const deleteMutation = trpc.notification.delete.useMutation({
-      onSuccess: () => {
-        utils.notification.list.invalidate({ projectId });
-        setShowDelete(false);
-      },
-    });
-
-    const testMutation = trpc.notification.test.useMutation({
-      onSuccess: (result) => {
-        setTestResult(result);
-        setTimeout(() => setTestResult(null), 5000);
-      },
-    });
 
     const eventLabels = (channel.events as string[])
       .map((e) =>

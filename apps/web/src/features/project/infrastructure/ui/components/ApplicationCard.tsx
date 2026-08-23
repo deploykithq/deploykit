@@ -1,10 +1,11 @@
 import { memo } from "react";
 import { Box, Globe } from "lucide-react";
 
-import { Card, StatusBadge } from "@shared/components";
+import { Card } from "@shared/components/card";
+import { StatusBadge } from "@shared/components/status-badge";
 
 import { timeAgo } from "@lib/utils";
-import type { ApplicationI } from "@project/infrastructure/ui/interfaces/project.module.interfaces";
+import type { ApplicationI } from "@project/infrastructure/ui/interfaces/project.interfaces";
 
 interface ApplicationCardPropsI {
   app: ApplicationI;

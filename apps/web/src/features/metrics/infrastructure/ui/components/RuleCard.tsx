@@ -1,34 +1,22 @@
-import { memo, useState } from "react";
-import { Trash2, ToggleLeft, ToggleRight } from "lucide-react";
+import { memo } from "react";
+import { ToggleLeft, ToggleRight, Trash2 } from "lucide-react";
 
-import { ConfirmDialog } from "@shared/components";
+import { ConfirmDialog } from "@shared/components/confirm-dialog";
 
-import { trpc } from "@lib/trpc";
+import { useRuleCard } from "@metrics/infrastructure/ui/hooks/useRuleCard";
 
 import {
-  METRIC_LABELS,
   CHANNEL_LABELS,
+  METRIC_LABELS,
 } from "@metrics/infrastructure/ui/constants/metrics.constants";
 
-interface RuleCardPropsI {
-  rule: any;
-}
+import type { RuleCardPropsI } from "@metrics/infrastructure/ui/interfaces/metrics.interfaces";
 
 export const RuleCard: React.FC<RuleCardPropsI> = memo(function RuleCard({
   rule,
 }) {
-  const utils = trpc.useUtils();
-  const [deleteOpen, setDeleteOpen] = useState(false);
-
-  const toggleMutation = trpc.metrics.updateRule.useMutation({
-    onSuccess: () => utils.metrics.listRules.invalidate(),
-  });
-  const deleteMutation = trpc.metrics.deleteRule.useMutation({
-    onSuccess: () => {
-      utils.metrics.listRules.invalidate();
-      utils.metrics.alertStats.invalidate();
-    },
-  });
+  const { deleteOpen, setDeleteOpen, deleting, toggleRule, deleteRule } =
+    useRuleCard();
 
   const opLabel = rule.operator === "gt" ? ">" : "<";
   const metricLabel = METRIC_LABELS[rule.metric] ?? rule.metric;
@@ -58,9 +46,7 @@ export const RuleCard: React.FC<RuleCardPropsI> = memo(function RuleCard({
         <div className="flex items-center gap-2 shrink-0">
           <button
             className="text-text-muted hover:text-text-primary transition-colors"
-            onClick={() =>
-              toggleMutation.mutate({ id: rule.id, enabled: !rule.enabled })
-            }
+            onClick={() => toggleRule(rule.id, !rule.enabled)}
             title={rule.enabled ? "Disable rule" : "Enable rule"}
           >
             {rule.enabled ? (
@@ -81,11 +67,11 @@ export const RuleCard: React.FC<RuleCardPropsI> = memo(function RuleCard({
       <ConfirmDialog
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
-        onConfirm={() => deleteMutation.mutate({ id: rule.id })}
+        onConfirm={() => deleteRule(rule.id)}
         title="Delete alert rule"
         description={`Remove the alert rule for "${rule.serviceName ?? rule.serviceId}"? Existing events won't be deleted.`}
         confirmText="Delete rule"
-        isPending={deleteMutation.isPending}
+        isPending={deleting}
       />
     </>
   );

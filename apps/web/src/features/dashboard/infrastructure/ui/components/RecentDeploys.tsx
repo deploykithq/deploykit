@@ -2,15 +2,16 @@ import { memo } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Rocket, Clock } from "lucide-react";
 
-import { Card, StatusBadge } from "@shared/components";
+import { Card } from "@shared/components/card";
+import { StatusBadge } from "@shared/components/status-badge";
 
 import { timeAgo } from "@lib/utils";
 
 import {
   DEPLOY_STATUS_ICON,
   DEPLOY_STATUS_COLOR,
-} from "@dashboard/infrastructure/ui/constants/dashboard.module.constants";
-import type { DashboardDeployI } from "@dashboard/infrastructure/ui/types/dashboard.module.types";
+} from "@dashboard/infrastructure/ui/constants/dashboard.constants";
+import type { DashboardDeployI } from "@dashboard/infrastructure/ui/interfaces/dashboard.interfaces";
 
 interface RecentDeploysPropsI {
   deploys: DashboardDeployI[];

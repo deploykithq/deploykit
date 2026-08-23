@@ -1,7 +1,7 @@
 import { memo } from "react";
 import { KeyRound, Trash2 } from "lucide-react";
 
-import { Button } from "@shared/components";
+import { Button } from "@shared/components/button";
 
 interface UserActionsPropsI {
   isSelf: boolean;

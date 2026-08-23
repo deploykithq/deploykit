@@ -1,11 +1,13 @@
-import { memo, useState } from "react";
-import { Globe, ExternalLink } from "lucide-react";
+import { memo } from "react";
+import { ExternalLink, Globe } from "lucide-react";
 
-import { Button, Card, Input } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Card } from "@shared/components/card";
+import { Input } from "@shared/components/input";
 
-import { trpc } from "@lib/trpc";
-import { useAuthStore } from "@lib/auth";
-import type { ProjectI } from "@project/infrastructure/ui/interfaces/project.module.interfaces";
+import { useStatusPageSection } from "@project/infrastructure/ui/hooks/useStatusPageSection";
+
+import type { ProjectI } from "@project/infrastructure/ui/interfaces/project.interfaces";
 
 interface StatusPageSectionPropsI {
   project: ProjectI;
@@ -13,41 +15,20 @@ interface StatusPageSectionPropsI {
 
 export const StatusPageSection: React.FC<StatusPageSectionPropsI> = memo(
   function StatusPageSection({ project }) {
-    const canWrite = useAuthStore((s) => s.canWrite)();
-    const utils = trpc.useUtils();
-
-    const [enabled, setEnabled] = useState(!!project.statusPageEnabled);
-    const [slug, setSlug] = useState(project.statusPageSlug ?? "");
-    const [title, setTitle] = useState(project.statusPageTitle ?? "");
-    const [error, setError] = useState<string | null>(null);
-
-    const invalidate = () =>
-      utils.project.byId.invalidate({ id: project.id });
-
-    const updateStatusPage = trpc.project.updateStatusPage.useMutation({
-      onSuccess: () => {
-        setError(null);
-        invalidate();
-      },
-      onError: (e) => setError(e.message),
-    });
-
-    const updateApp = trpc.application.update.useMutation({
-      onSuccess: invalidate,
-    });
-
-    const save = () =>
-      updateStatusPage.mutate({
-        id: project.id,
-        enabled,
-        slug: slug.trim() || undefined,
-        title: title.trim() || undefined,
-      });
-
-    const publicUrl =
-      project.statusPageEnabled && project.statusPageSlug
-        ? `${window.location.origin}/status/${project.statusPageSlug}`
-        : null;
+    const {
+      canWrite,
+      enabled,
+      setEnabled,
+      slug,
+      setSlug,
+      title,
+      setTitle,
+      error,
+      updateStatusPage,
+      updateApp,
+      save,
+      publicUrl,
+    } = useStatusPageSection(project);
 
     return (
       <section>

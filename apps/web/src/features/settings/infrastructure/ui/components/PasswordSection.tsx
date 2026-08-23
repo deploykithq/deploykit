@@ -1,9 +1,12 @@
 import { Lock } from "lucide-react";
-import { Button, Input } from "@shared/components";
+
+import { Button } from "@shared/components/button";
+import { FormStatus } from "@shared/components/form-status";
+import { Input } from "@shared/components/input";
+
+import { SectionCard } from "@settings/infrastructure/ui/components";
 
 import { usePasswordForm } from "@settings/infrastructure/ui/hooks/usePasswordForm";
-
-import { SectionCard, FormStatus } from "@settings/infrastructure/ui/components";
 
 export const PasswordSection: React.FC = () => {
   const {

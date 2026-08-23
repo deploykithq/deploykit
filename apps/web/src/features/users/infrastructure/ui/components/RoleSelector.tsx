@@ -4,7 +4,7 @@ import { useUpdateRole } from "@users/infrastructure/ui/hooks/useUpdateRole";
 
 import { RoleBadge } from "@users/infrastructure/ui/components";
 
-import { ROLE_OPTIONS } from "@users/infrastructure/ui/constants/roles.constants";
+import { ROLE_OPTIONS } from "@users/infrastructure/ui/constants/users.constants";
 
 interface RoleSelectorPropsI {
   userId: string;

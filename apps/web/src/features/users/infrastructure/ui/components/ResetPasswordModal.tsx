@@ -2,7 +2,10 @@ import { memo } from "react";
 
 import { useResetPassword } from "@users/infrastructure/ui/hooks/useResetPassword";
 
-import { Button, Input, Modal, FormStatus } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { FormStatus } from "@shared/components/form-status";
+import { Input } from "@shared/components/input";
+import { Modal } from "@shared/components/modal";
 
 interface ResetPasswordModalPropsI {
   open: boolean;

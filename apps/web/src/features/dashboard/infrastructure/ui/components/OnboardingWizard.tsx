@@ -1,18 +1,17 @@
 import { memo } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import {
   CheckCircle2,
   Circle,
-  Server,
   FolderKanban,
   Rocket,
+  Server,
   Sparkles,
 } from "lucide-react";
 
-import { Button, Card } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Card } from "@shared/components/card";
 
-import { trpc } from "@lib/trpc";
-import { useAuthStore } from "@lib/auth";
+import { useOnboarding } from "@dashboard/infrastructure/ui/hooks/useOnboarding";
 
 interface OnboardingStatsI {
   servers: number;
@@ -28,14 +27,8 @@ interface OnboardingWizardPropsI {
 
 export const OnboardingWizard: React.FC<OnboardingWizardPropsI> = memo(
   function OnboardingWizard({ stats, onCreateProject }) {
-    const navigate = useNavigate();
-    const utils = trpc.useUtils();
-    const isAdmin = useAuthStore((s) => s.user?.role === "admin");
-
-    const createLocal = trpc.server.createLocal.useMutation({
-      onSuccess: () => utils.dashboard.summary.invalidate(),
-      onError: (err) => alert(err.message),
-    });
+    const { isAdmin, navigate, connectingLocal, connectLocalServer } =
+      useOnboarding();
 
     // Hide once the user has provisioned anything.
     if (stats.applications > 0 || stats.databases > 0) return null;
@@ -64,10 +57,10 @@ export const OnboardingWizard: React.FC<OnboardingWizardPropsI> = memo(
                 <Button
                   size="sm"
                   variant="secondary"
-                  disabled={createLocal.isPending}
-                  onClick={() => createLocal.mutate()}
+                  disabled={connectingLocal}
+                  onClick={connectLocalServer}
                 >
-                  {createLocal.isPending ? "Connecting…" : "Use local server"}
+                  {connectingLocal ? "Connecting…" : "Use local server"}
                 </Button>
               ) : (
                 <span className="text-[11px] text-text-muted">

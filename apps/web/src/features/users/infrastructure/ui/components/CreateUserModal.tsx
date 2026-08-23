@@ -3,12 +3,15 @@ import { AlertTriangle } from "lucide-react";
 
 import { useCreateUser } from "@users/infrastructure/ui/hooks/useCreateUser";
 
-import { Button, Input, Select, Modal } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Input } from "@shared/components/input";
+import { Modal } from "@shared/components/modal";
+import { Select } from "@shared/components/select";
 
 import {
   ROLE_OPTIONS,
   ROLE_DESCRIPTIONS,
-} from "@users/infrastructure/ui/constants/roles.constants";
+} from "@users/infrastructure/ui/constants/users.constants";
 
 interface CreateUserModalPropsI {
   open: boolean;

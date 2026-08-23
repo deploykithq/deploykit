@@ -1,14 +1,16 @@
-import { memo, useState } from "react";
+import { memo } from "react";
 import { Bell, Plus } from "lucide-react";
 
-import { Button, Card, EmptyState } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Card } from "@shared/components/card";
+import { EmptyState } from "@shared/components/empty-state";
+
 import {
   NotificationChannelCard,
   NotificationChannelModal,
 } from "@project/infrastructure/ui/components";
 
-import { trpc } from "@lib/trpc";
-import { useAuthStore } from "@lib/auth";
+import { useProjectNotifications } from "@project/infrastructure/ui/hooks/useProjectNotifications";
 
 interface NotificationsSectionPropsI {
   projectId: string;
@@ -16,24 +18,17 @@ interface NotificationsSectionPropsI {
 
 export const NotificationsSection: React.FC<NotificationsSectionPropsI> = memo(
   function NotificationsSection({ projectId }) {
-    const [showModal, setShowModal] = useState<boolean>(false);
-    const [editChannel, setEditChannel] = useState<any>(null);
-
-    const canWrite = useAuthStore((s) => s.canWrite)();
-
-    const { data: channels = [], isLoading } = trpc.notification.list.useQuery({
-      projectId,
-    });
-
-    const handleEdit = (channel: any) => {
-      setEditChannel(channel);
-      setShowModal(true);
-    };
-
-    const handleClose = () => {
-      setShowModal(false);
-      setEditChannel(null);
-    };
+    const {
+      showModal,
+      setShowModal,
+      editChannel,
+      setEditChannel,
+      canWrite,
+      channels,
+      isLoading,
+      handleEdit,
+      handleClose,
+    } = useProjectNotifications(projectId);
 
     return (
       <section>

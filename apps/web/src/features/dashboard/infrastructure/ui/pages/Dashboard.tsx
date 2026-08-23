@@ -1,47 +1,34 @@
-import { useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
-import { Plus, Box, Database, Server, Bell, Loader2 } from "lucide-react";
+import { Bell, Box, Database, Loader2, Plus, Server } from "lucide-react";
 
-import { Button, Modal, Input } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Input } from "@shared/components/input";
+import { Modal } from "@shared/components/modal";
+
 import {
-  StatCard,
-  RecentDeploys,
-  ProjectList,
   ActivityFeed,
-  ServerOverview,
   OnboardingWizard,
+  ProjectList,
+  RecentDeploys,
+  ServerOverview,
+  StatCard,
 } from "@dashboard/infrastructure/ui/components";
 
-import { trpc } from "@lib/trpc";
-import { useServiceUpdates } from "@lib/socket";
+import { useDashboard } from "@dashboard/infrastructure/ui/hooks/useDashboard";
 
 export const DashboardPage = () => {
-  const navigate = useNavigate();
-  const utils = trpc.useUtils();
-
-  useServiceUpdates();
-
-  const { data, isLoading } = trpc.dashboard.summary.useQuery(undefined, {
-    refetchInterval: 30_000,
-  });
-
-  const [showCreate, setShowCreate] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newDesc, setNewDesc] = useState("");
-
-  const createMutation = trpc.project.create.useMutation({
-    onSuccess: (project) => {
-      utils.dashboard.summary.invalidate();
-      utils.project.list.invalidate();
-      setShowCreate(false);
-      setNewName("");
-      setNewDesc("");
-      navigate({
-        to: "/projects/$projectId",
-        params: { projectId: project.id },
-      });
-    },
-  });
+  const {
+    data,
+    isLoading,
+    navigate,
+    showCreate,
+    setShowCreate,
+    newName,
+    setNewName,
+    newDesc,
+    setNewDesc,
+    creating,
+    handleCreateProject,
+  } = useDashboard();
 
   if (isLoading) {
     return (
@@ -153,11 +140,7 @@ export const DashboardPage = () => {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (!newName.trim()) return;
-            createMutation.mutate({
-              name: newName.trim(),
-              description: newDesc.trim() || undefined,
-            });
+            handleCreateProject();
           }}
           className="space-y-4"
         >
@@ -183,11 +166,8 @@ export const DashboardPage = () => {
             >
               Cancel
             </Button>
-            <Button
-              type="submit"
-              disabled={createMutation.isPending || !newName.trim()}
-            >
-              {createMutation.isPending ? "Creating..." : "Create Project"}
+            <Button type="submit" disabled={creating || !newName.trim()}>
+              {creating ? "Creating..." : "Create Project"}
             </Button>
           </div>
         </form>

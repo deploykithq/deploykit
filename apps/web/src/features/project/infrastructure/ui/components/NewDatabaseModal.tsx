@@ -1,11 +1,16 @@
-import { memo, useState } from "react";
+import { memo } from "react";
 import type { DatabaseType } from "@deploykit/shared";
 
-import { Modal, Button, Input, Select } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Input } from "@shared/components/input";
+import { Modal } from "@shared/components/modal";
+import { Select } from "@shared/components/select";
+
 import { ServerSelector } from "@project/infrastructure/ui/components/ServerSelector";
 
-import { trpc } from "@lib/trpc";
-import { DB_TYPE_OPTIONS } from "@project/infrastructure/ui/constants/project.module.constants";
+import { useNewDatabaseForm } from "@project/infrastructure/ui/hooks/useNewDatabaseForm";
+
+import { DB_TYPE_OPTIONS } from "@project/infrastructure/ui/constants/project.constants";
 
 interface NewDatabaseModalPropsI {
   open: boolean;
@@ -16,36 +21,18 @@ interface NewDatabaseModalPropsI {
 
 export const NewDatabaseModal: React.FC<NewDatabaseModalPropsI> = memo(
   function NewDatabaseModal({ open, onClose, projectId, onCreated }) {
-    const [name, setName] = useState<string>("");
-    const [type, setType] = useState<DatabaseType>("postgresql");
-    const [serverId, setServerId] = useState<string | null>(null);
-    const [replicaSet, setReplicaSet] = useState<boolean>(false);
-
-    const createMutation = trpc.database.create.useMutation({
-      onSuccess: (data) => {
-        onCreated();
-        setName("");
-        setServerId(null);
-        setReplicaSet(false);
-        if (data.connectionString) {
-          alert(
-            `Database created!\n\nConnection string:\n${data.connectionString}`,
-          );
-        }
-      },
-      onError: (err) => alert(err.message),
-    });
-
-    const handleSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      createMutation.mutate({
-        projectId,
-        name,
-        type,
-        serverId: serverId ?? undefined,
-        replicaSet: type === "mongodb" ? replicaSet : false,
-      });
-    };
+    const {
+      name,
+      setName,
+      type,
+      setType,
+      serverId,
+      setServerId,
+      replicaSet,
+      setReplicaSet,
+      creating,
+      handleSubmit,
+    } = useNewDatabaseForm(projectId, onCreated);
 
     return (
       <Modal open={open} onClose={onClose} title="New Database">
@@ -82,8 +69,8 @@ export const NewDatabaseModal: React.FC<NewDatabaseModalPropsI> = memo(
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={createMutation.isPending}>
-              {createMutation.isPending ? "Creating..." : "Create Database"}
+            <Button type="submit" disabled={creating}>
+              {creating ? "Creating..." : "Create Database"}
             </Button>
           </div>
         </form>

@@ -1,18 +1,21 @@
-import React, { memo, useMemo, useState } from "react";
+import { memo, useMemo } from "react";
 import { RotateCcw } from "lucide-react";
 
-import { Card, Button, StatusBadge, ConfirmDialog } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Card } from "@shared/components/card";
+import { ConfirmDialog } from "@shared/components/confirm-dialog";
+import { StatusBadge } from "@shared/components/status-badge";
 import { LogViewer } from "@application/infrastructure/ui/components/LogViewer";
 import {
   VulnerabilityBadge,
   ScanResultsPanel,
 } from "@application/infrastructure/ui/components/VulnerabilityBadge";
 
-import { trpc } from "@lib/trpc";
-import { useDeployLogs } from "@lib/socket";
-import { timeAgo, cn } from "@lib/utils";
+import { useDeploymentsTab } from "@application/infrastructure/ui/hooks/useDeploymentsTab";
 
-import { STATUS_ICONS } from "@application/infrastructure/ui/constants/applications.constants";
+import { cn, timeAgo } from "@lib/utils";
+
+import { STATUS_ICONS } from "@application/infrastructure/ui/constants/application.constants";
 import { getStoredLogs } from "@application/infrastructure/ui/utils/applications.utils";
 
 interface DeploymentsTabPropsI {
@@ -21,39 +24,20 @@ interface DeploymentsTabPropsI {
 
 export const DeploymentsTab: React.FC<DeploymentsTabPropsI> = memo(
   function DeploymentsTab({ applicationId }) {
-    const utils = trpc.useUtils();
-    const { data: app } = trpc.application.byId.useQuery({ id: applicationId });
-    const { data: deploymentsList } = trpc.application.deployments.useQuery({
-      id: applicationId,
-    });
+    const {
+      app,
+      deploymentsList,
+      selectedDeployId,
+      setSelectedDeployId,
+      rollbackTarget,
+      setRollbackTarget,
+      liveLogs,
+      liveStatus,
+      currentDeployId,
+      rollingBack,
+      rollback,
+    } = useDeploymentsTab(applicationId);
 
-    const [selectedDeployId, setSelectedDeployId] = useState<string | null>(
-      null,
-    );
-    const [rollbackTarget, setRollbackTarget] = useState<string | null>(null);
-
-    const { logs: liveLogs, status: liveStatus } =
-      useDeployLogs(selectedDeployId);
-
-    const rollbackMutation = trpc.application.rollback.useMutation({
-      onSuccess: (newDeploy) => {
-        utils.application.byId.invalidate({ id: applicationId });
-        utils.application.deployments.invalidate({ id: applicationId });
-        setRollbackTarget(null);
-        setSelectedDeployId(newDeploy.id);
-      },
-      onError: (err) => {
-        utils.application.byId.invalidate({ id: applicationId });
-        utils.application.deployments.invalidate({ id: applicationId });
-        setRollbackTarget(null);
-        alert(`Rollback failed: ${err.message}`);
-      },
-    });
-
-    const currentDeployId = useMemo(
-      () => deploymentsList?.find((d) => d.status === "success")?.id,
-      [deploymentsList],
-    );
     const rollbackTargetDeploy = useMemo(
       () => deploymentsList?.find((d) => d.id === rollbackTarget),
       [deploymentsList, rollbackTarget],
@@ -165,12 +149,12 @@ export const DeploymentsTab: React.FC<DeploymentsTabPropsI> = memo(
                             setRollbackTarget(d.id);
                           }}
                           title={`Roll back to ${d.commitHash || d.id.slice(0, 8)}`}
-                          disabled={rollbackMutation.isPending}
+                          disabled={rollingBack}
                         >
                           <RotateCcw
                             className={cn(
                               "w-3.5 h-3.5",
-                              rollbackMutation.isPending &&
+                              rollingBack &&
                                 rollbackTarget === d.id &&
                                 "animate-spin",
                             )}
@@ -221,13 +205,7 @@ export const DeploymentsTab: React.FC<DeploymentsTabPropsI> = memo(
         <ConfirmDialog
           open={!!rollbackTarget}
           onClose={() => setRollbackTarget(null)}
-          onConfirm={() =>
-            rollbackTarget &&
-            rollbackMutation.mutate({
-              applicationId,
-              deploymentId: rollbackTarget,
-            })
-          }
+          onConfirm={() => rollbackTarget && rollback(rollbackTarget)}
           title="Roll back deployment"
           description={
             rollbackTargetDeploy
@@ -236,7 +214,7 @@ export const DeploymentsTab: React.FC<DeploymentsTabPropsI> = memo(
           }
           confirmText="Roll back"
           variant="primary"
-          isPending={rollbackMutation.isPending}
+          isPending={rollingBack}
         />
       </div>
     );

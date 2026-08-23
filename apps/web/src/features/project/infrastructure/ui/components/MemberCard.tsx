@@ -1,10 +1,12 @@
-import { memo, useState } from "react";
-import { User, Trash2, ChevronDown } from "lucide-react";
+import { memo } from "react";
+import { ChevronDown, Trash2, User } from "lucide-react";
 
-import { Button, ConfirmDialog } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { ConfirmDialog } from "@shared/components/confirm-dialog";
 
-import { trpc } from "@lib/trpc";
-import { ROLE_STYLES } from "@project/infrastructure/ui/constants/project.module.constants";
+import { useMemberCard } from "@project/infrastructure/ui/hooks/useMemberCard";
+
+import { ROLE_STYLES } from "@project/infrastructure/ui/constants/project.constants";
 
 interface MemberCardPropsI {
   member: {
@@ -23,24 +25,16 @@ export const MemberCard: React.FC<MemberCardPropsI> = memo(function MemberCard({
   projectId,
   canManage,
 }) {
-  const [showDelete, setShowDelete] = useState(false);
-  const [showRoleMenu, setShowRoleMenu] = useState(false);
-  const utils = trpc.useUtils();
-
-  const updateRoleMutation = trpc.projectMember.updateRole.useMutation({
-    onSuccess: () => {
-      utils.projectMember.list.invalidate({ projectId });
-      setShowRoleMenu(false);
-    },
-  });
-
-  const removeMutation = trpc.projectMember.remove.useMutation({
-    onSuccess: () => {
-      utils.projectMember.list.invalidate({ projectId });
-      utils.projectMember.availableUsers.invalidate({ projectId });
-      setShowDelete(false);
-    },
-  });
+  const {
+    showDelete,
+    setShowDelete,
+    showRoleMenu,
+    setShowRoleMenu,
+    updatingRole,
+    removing,
+    updateRole,
+    removeMember,
+  } = useMemberCard(projectId);
 
   const style = ROLE_STYLES[member.role] || ROLE_STYLES.viewer!;
 
@@ -82,10 +76,10 @@ export const MemberCard: React.FC<MemberCardPropsI> = memo(function MemberCard({
                     <button
                       key={r}
                       onClick={() =>
-                        updateRoleMutation.mutate({ id: member.id, role: r })
+                        updateRole({ id: member.id, role: r })
                       }
                       disabled={
-                        r === member.role || updateRoleMutation.isPending
+                        r === member.role || updatingRole
                       }
                       className={`w-full text-left px-3 py-1.5 text-xs hover:bg-surface-2 transition-colors ${
                         r === member.role
@@ -125,11 +119,11 @@ export const MemberCard: React.FC<MemberCardPropsI> = memo(function MemberCard({
       <ConfirmDialog
         open={showDelete}
         onClose={() => setShowDelete(false)}
-        onConfirm={() => removeMutation.mutate({ id: member.id })}
+        onConfirm={() => removeMember({ id: member.id })}
         title="Remove Member"
         description={`Remove ${member.email} from this project? They will fall back to their global role (${member.globalRole}).`}
         confirmText="Remove"
-        isPending={removeMutation.isPending}
+        isPending={removing}
       />
     </>
   );

@@ -1,8 +1,8 @@
 import { memo } from "react";
 
-import { Card } from "@shared/components";
+import { Card } from "@shared/components/card";
 
-import { ACCENT_STYLES } from "@dashboard/infrastructure/ui/constants/dashboard.module.constants";
+import { ACCENT_STYLES } from "@dashboard/infrastructure/ui/constants/dashboard.constants";
 
 interface StatCardPropsI {
   label: string;

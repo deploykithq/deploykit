@@ -1,72 +1,43 @@
-import { memo, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, Plus, Box, Database, Trash2 } from "lucide-react";
+import { memo } from "react";
+import { ArrowLeft, Box, Database, Plus, Trash2 } from "lucide-react";
 
-import { projectDetailRoute } from "@/router";
+import { Button } from "@shared/components/button";
+import { Card } from "@shared/components/card";
+import { ConfirmDialog } from "@shared/components/confirm-dialog";
+import { EmptyState } from "@shared/components/empty-state";
 
-import { useAuthStore } from "@lib/auth";
-
-import { Button, Card, EmptyState, ConfirmDialog } from "@shared/components";
 import {
   ApplicationCard,
   DatabaseCard,
+  MembersSection,
   NewApplicationModal,
   NewDatabaseModal,
   NotificationsSection,
   StatusPageSection,
-  MembersSection,
 } from "@project/infrastructure/ui/components";
 
-import { trpc } from "@lib/trpc";
-import type { ProjectI } from "@project/infrastructure/ui/interfaces/project.module.interfaces";
+import { useProjectDetail } from "@project/infrastructure/ui/hooks/useProjectDetail";
 
 export const ProjectDetailPage: React.FC = memo(function ProjectDetailPage() {
-  const { projectId } = projectDetailRoute.useParams();
-  const navigate = useNavigate();
-  const onBack = () => navigate({ to: "/" });
-  const onOpenService = (type: "application" | "database", id: string) => {
-    if (type === "application") {
-      navigate({
-        to: "/projects/$projectId/apps/$appId",
-        params: { projectId, appId: id },
-      });
-    } else {
-      navigate({
-        to: "/projects/$projectId/db/$dbId",
-        params: { projectId, dbId: id },
-      });
-    }
-  };
-  const utils = trpc.useUtils();
-  const [showNewApp, setShowNewApp] = useState(false);
-  const [showNewDb, setShowNewDb] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-
-  const canWrite = useAuthStore((s) => s.canWrite)();
-  const isAdmin = useAuthStore((s) => s.isAdmin)();
-
-  const { data: rawProject, isLoading } = trpc.project.byId.useQuery({
-    id: projectId,
-  });
-
-  const project = rawProject as ProjectI | undefined;
-
-  const deleteMutation = trpc.project.delete.useMutation({
-    onSuccess: () => {
-      utils.project.list.invalidate();
-      onBack();
-    },
-  });
-
-  const handleAppCreated = () => {
-    setShowNewApp(false);
-    utils.project.byId.invalidate({ id: projectId });
-  };
-
-  const handleDbCreated = () => {
-    setShowNewDb(false);
-    utils.project.byId.invalidate({ id: projectId });
-  };
+  const {
+    projectId,
+    project,
+    isLoading,
+    onBack,
+    onOpenService,
+    canWrite,
+    isAdmin,
+    showNewApp,
+    setShowNewApp,
+    showNewDb,
+    setShowNewDb,
+    showDeleteConfirm,
+    setShowDeleteConfirm,
+    deleting,
+    deleteProject,
+    handleAppCreated,
+    handleDbCreated,
+  } = useProjectDetail();
 
   if (isLoading)
     return <div className="text-sm text-text-muted p-6">Loading...</div>;
@@ -217,11 +188,11 @@ export const ProjectDetailPage: React.FC = memo(function ProjectDetailPage() {
       <ConfirmDialog
         open={showDeleteConfirm}
         onClose={() => setShowDeleteConfirm(false)}
-        onConfirm={() => deleteMutation.mutate({ id: projectId })}
+        onConfirm={deleteProject}
         title="Delete Project"
         description={`This will permanently delete "${project.name}" and all its applications, databases, and deployments. All running containers will be stopped.`}
         confirmText="Delete Project"
-        isPending={deleteMutation.isPending}
+        isPending={deleting}
       />
     </div>
   );

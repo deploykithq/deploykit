@@ -1,7 +1,9 @@
 import { memo } from "react";
 import { Plus, Users } from "lucide-react";
 
-import { Button, Card, EmptyState } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Card } from "@shared/components/card";
+import { EmptyState } from "@shared/components/empty-state";
 import { UserCard } from "@users/infrastructure/ui/components";
 
 interface UserListContentPropsI {

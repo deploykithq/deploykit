@@ -2,7 +2,9 @@ import { User } from "lucide-react";
 
 import { useProfileForm } from "@settings/infrastructure/ui/hooks/useProfileForm";
 
-import { Button, Input, FormStatus } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { FormStatus } from "@shared/components/form-status";
+import { Input } from "@shared/components/input";
 import { SectionCard, RoleBadge } from "@settings/infrastructure/ui/components";
 
 export const ProfileSection: React.FC = () => {

@@ -1,108 +1,49 @@
-import { memo, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { memo } from "react";
 import { ArrowRight, CheckCircle2, Copy } from "lucide-react";
-import type { Template } from "@deploykit/shared";
 
-import { Modal, Button, Input, Select } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Input } from "@shared/components/input";
+import { Modal } from "@shared/components/modal";
+import { Select } from "@shared/components/select";
+
 import { ServerSelector } from "@project/infrastructure/ui/components/ServerSelector";
 
-import { trpc } from "@lib/trpc";
+import { useDeployTemplate } from "@templates/infrastructure/ui/hooks/useDeployTemplate";
 
-interface DeployTemplateModalPropsI {
-  template: Template | null;
-  open: boolean;
-  onClose: () => void;
-  /** Preselect a project (e.g. when launched from a project page). */
-  projectId?: string;
-}
-
-type DeployResult = {
-  projectId: string;
-  primaryApplicationId: string | null;
-  applications: { id: string; name: string; deployed: boolean }[];
-  databases: { id: string; name: string; connectionString: string }[];
-};
+import type {
+  DeployResultViewPropsI,
+  DeployTemplateModalPropsI,
+} from "@templates/infrastructure/ui/interfaces/templates.interfaces";
 
 export const DeployTemplateModal: React.FC<DeployTemplateModalPropsI> = memo(
   function DeployTemplateModal({ template, open, onClose, projectId }) {
-    const navigate = useNavigate();
-    const utils = trpc.useUtils();
-
-    const [name, setName] = useState<string>("");
-    const [selectedProject, setSelectedProject] = useState<string>(
-      projectId ?? "",
-    );
-    const [serverId, setServerId] = useState<string | null>(null);
-    const [result, setResult] = useState<DeployResult | null>(null);
-
-    const projectsQuery = trpc.project.list.useQuery(undefined, {
-      enabled: open && !projectId,
-    });
-
-    const deployMutation = trpc.template.deploy.useMutation({
-      onSuccess: (data) => {
-        utils.dashboard.summary.invalidate();
-        utils.project.list.invalidate();
-        utils.project.byId.invalidate({ id: data.projectId });
-        setResult(data);
-      },
-      onError: (err) => alert(err.message),
-    });
-
-    const effectiveProjectId = projectId ?? selectedProject;
-
-    const close = () => {
-      setName("");
-      setResult(null);
-      setServerId(null);
-      if (!projectId) setSelectedProject("");
-      deployMutation.reset();
-      onClose();
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!template || !effectiveProjectId) return;
-      deployMutation.mutate({
-        templateId: template.id,
-        projectId: effectiveProjectId,
-        name: name.trim(),
-        serverId: serverId ?? undefined,
-      });
-    };
+    const {
+      name,
+      setName,
+      selectedProject,
+      setSelectedProject,
+      serverId,
+      setServerId,
+      result,
+      effectiveProjectId,
+      projectOptions,
+      noProjects,
+      deploying,
+      close,
+      handleSubmit,
+      goToApp,
+      goToProject,
+    } = useDeployTemplate({ template, open, onClose, projectId });
 
     if (!template) return null;
-
-    const projectOptions = [
-      { value: "", label: "Select a project…" },
-      ...(projectsQuery.data ?? []).map((p) => ({
-        value: p.id,
-        label: p.name,
-      })),
-    ];
-
-    const noProjects =
-      !projectId && projectsQuery.isSuccess && projectOptions.length === 1;
 
     return (
       <Modal open={open} onClose={close} title={`Deploy ${template.name}`}>
         {result ? (
           <DeployResultView
             result={result}
-            onGoToApp={(pid, appId) => {
-              close();
-              navigate({
-                to: "/projects/$projectId/apps/$appId",
-                params: { projectId: pid, appId },
-              });
-            }}
-            onGoToProject={(pid) => {
-              close();
-              navigate({
-                to: "/projects/$projectId",
-                params: { projectId: pid },
-              });
-            }}
+            onGoToApp={goToApp}
+            onGoToProject={goToProject}
           />
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -144,13 +85,9 @@ export const DeployTemplateModal: React.FC<DeployTemplateModalPropsI> = memo(
               </Button>
               <Button
                 type="submit"
-                disabled={
-                  deployMutation.isPending ||
-                  !name.trim() ||
-                  !effectiveProjectId
-                }
+                disabled={deploying || !name.trim() || !effectiveProjectId}
               >
-                {deployMutation.isPending ? "Deploying…" : "Deploy"}
+                {deploying ? "Deploying…" : "Deploy"}
               </Button>
             </div>
           </form>
@@ -160,11 +97,11 @@ export const DeployTemplateModal: React.FC<DeployTemplateModalPropsI> = memo(
   },
 );
 
-const DeployResultView: React.FC<{
-  result: DeployResult;
-  onGoToApp: (projectId: string, appId: string) => void;
-  onGoToProject: (projectId: string) => void;
-}> = ({ result, onGoToApp, onGoToProject }) => {
+const DeployResultView: React.FC<DeployResultViewPropsI> = ({
+  result,
+  onGoToApp,
+  onGoToProject,
+}) => {
   const primaryApp =
     result.applications.find((a) => a.id === result.primaryApplicationId) ??
     result.applications[0];

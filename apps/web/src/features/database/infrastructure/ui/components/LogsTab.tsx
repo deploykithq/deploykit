@@ -1,10 +1,11 @@
 import { memo, useEffect, useRef, useState } from "react";
 
-import { Card, LogSearchPanel } from "@shared/components";
+import { Card } from "@shared/components/card";
+import { LogSearchPanel } from "@shared/components/log-search-panel";
 
 import { useContainerLogs } from "@lib/socket";
 import { cn } from "@lib/utils";
-import type { DatabaseI } from "@database/infrastructure/ui/interfaces/database.module.interfaces";
+import type { DatabaseI } from "@database/infrastructure/ui/interfaces/database.interfaces";
 
 interface LogsTabPropsI {
   db: DatabaseI;

@@ -1,10 +1,11 @@
 import { memo } from "react";
-import { Card, StatusBadge } from "@shared/components";
+import { Card } from "@shared/components/card";
+import { StatusBadge } from "@shared/components/status-badge";
 
 import { timeAgo } from "@lib/utils";
 
-import { DB_TYPE_EMOJI } from "@database/infrastructure/ui/constants/database.module.constants";
-import type { ProjectDatabaseI } from "@project/infrastructure/ui/interfaces/project.module.interfaces";
+import { DB_TYPE_EMOJI } from "@database/infrastructure/ui/constants/database.constants";
+import type { ProjectDatabaseI } from "@project/infrastructure/ui/interfaces/project.interfaces";
 
 interface DatabaseCardPropsI {
   db: ProjectDatabaseI;

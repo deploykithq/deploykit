@@ -1,5 +1,4 @@
-import { useState, lazy, Suspense } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { lazy, Suspense } from "react";
 import {
   ArrowLeft,
   GitBranch,
@@ -10,13 +9,11 @@ import {
   Trash2,
 } from "lucide-react";
 
-import {
-  Button,
-  StatusBadge,
-  ConfirmDialog,
-  Modal,
-  Input,
-} from "@shared/components";
+import { Button } from "@shared/components/button";
+import { ConfirmDialog } from "@shared/components/confirm-dialog";
+import { Input } from "@shared/components/input";
+import { Modal } from "@shared/components/modal";
+import { StatusBadge } from "@shared/components/status-badge";
 import {
   GeneralTab,
   EnvVarsTab,
@@ -34,55 +31,33 @@ const TerminalTab = lazy(() =>
   })),
 );
 
-import { useApplicationActions } from "@application/infrastructure/ui/hooks/useApplicationActions";
+import { useApplicationDetail } from "@application/infrastructure/ui/hooks/useApplicationDetail";
 
-import { appDetailRoute } from "@/router";
-
-import { trpc } from "@lib/trpc";
 import { cn } from "@lib/utils";
 
-import { TABS } from "@application/infrastructure/ui/constants/applications.constants";
-import type { TabT } from "@application/infrastructure/ui/types/application.module.types";
+import { TABS } from "@application/infrastructure/ui/constants/application.constants";
 
 export const ApplicationDetailPage = () => {
-  const { projectId, appId: applicationId } = appDetailRoute.useParams();
-  const navigate = useNavigate();
-  const onBack = () =>
-    navigate({ to: "/projects/$projectId", params: { projectId } });
-
-  const [activeTab, setActiveTab] = useState<TabT>("general");
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showBranchModal, setShowBranchModal] = useState(false);
-  const [branchInput, setBranchInput] = useState("");
-
-  const { data: app, isLoading } = trpc.application.byId.useQuery(
-    { id: applicationId },
-    {
-      refetchInterval: (query) => {
-        const status = query.state.data?.status;
-        if (status === "building" || status === "deploying") return 3000;
-        return false;
-      },
-    },
-  );
-
-  // Use per-project role from the API (resolved server-side)
-  const projectRole = (app as any)?.projectRole as string | undefined;
-  const canOperate = projectRole === "admin" || projectRole === "operator";
-
-  const { deployMutation, startMutation, stopMutation, deleteMutation } =
-    useApplicationActions({ applicationId, onBack, setActiveTab });
-
-  const utils = trpc.useUtils();
-  const deployBranchMutation = trpc.application.deployBranch.useMutation({
-    onSuccess: () => {
-      utils.application.byId.invalidate({ id: applicationId });
-      utils.application.deployments.invalidate({ id: applicationId });
-      setShowBranchModal(false);
-      setBranchInput("");
-      setActiveTab("deployments");
-    },
-  });
+  const {
+    applicationId,
+    app,
+    isLoading,
+    onBack,
+    canOperate,
+    activeTab,
+    setActiveTab,
+    showDeleteConfirm,
+    setShowDeleteConfirm,
+    showBranchModal,
+    setShowBranchModal,
+    branchInput,
+    setBranchInput,
+    deployMutation,
+    startMutation,
+    stopMutation,
+    deleteMutation,
+    deployBranchMutation,
+  } = useApplicationDetail();
 
   if (isLoading)
     return <div className="text-sm text-text-muted p-6">Loading...</div>;

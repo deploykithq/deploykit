@@ -1,6 +1,6 @@
 import { memo } from "react";
 
-import { Card } from "@shared/components";
+import { Card } from "@shared/components/card";
 import {
   UserAvatar,
   RoleSelector,

@@ -7,10 +7,8 @@
     "declarationMap": false,
     "paths": {
       "@/*": ["./src/*"],
-      "@core/*": ["./src/core/*"],
       "@shared/*": ["./src/shared/*"],
       "@lib/*": ["./src/lib/*"],
-      "@utils/*": ["./src/utils/*"],
       "@layout/*": ["./src/features/layout/*"],
       "@auth/*": ["./src/features/auth/*"],
       "@project/*": ["./src/features/project/*"],

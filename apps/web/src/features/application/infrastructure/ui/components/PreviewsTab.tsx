@@ -1,10 +1,13 @@
 import { memo } from "react";
 import { Globe, GitBranch, Trash2 } from "lucide-react";
 
-import { Card, Button, StatusBadge } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Card } from "@shared/components/card";
+import { StatusBadge } from "@shared/components/status-badge";
 import { CopyableField } from "./CopyableField";
 
-import { trpc } from "@lib/trpc";
+import { usePreviewsTab } from "@application/infrastructure/ui/hooks/usePreviewsTab";
+
 import { timeAgo } from "@lib/utils";
 
 interface PreviewsTabPropsI {
@@ -14,18 +17,8 @@ interface PreviewsTabPropsI {
 
 export const PreviewsTab: React.FC<PreviewsTabPropsI> = memo(
   function PreviewsTab({ app, applicationId }) {
-    const utils = trpc.useUtils();
-    
-    const { data: previews, isLoading } =
-      trpc.application.listPreviews.useQuery(
-        { parentId: applicationId },
-        { refetchInterval: 15_000 },
-      );
-
-    const deleteMutation = trpc.application.deletePreview.useMutation({
-      onSuccess: () =>
-        utils.application.listPreviews.invalidate({ parentId: applicationId }),
-    });
+    const { previews, isLoading, deleting, deletePreview } =
+      usePreviewsTab(applicationId);
 
     if (!app.previewEnabled) {
       return (
@@ -158,8 +151,8 @@ export const PreviewsTab: React.FC<PreviewsTabPropsI> = memo(
                     <Button
                       variant="danger"
                       size="sm"
-                      onClick={() => deleteMutation.mutate({ id: preview.id })}
-                      disabled={deleteMutation.isPending}
+                      onClick={() => deletePreview({ id: preview.id })}
+                      disabled={deleting}
                       title="Delete preview environment"
                     >
                       <Trash2 className="w-3.5 h-3.5" />

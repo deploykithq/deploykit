@@ -1,7 +1,7 @@
 import { memo } from "react";
 import { Search } from "lucide-react";
 
-import type { FiltersI } from "@audit/infrastructure/ui/types/audit.module.types";
+import type { FiltersI } from "@audit/infrastructure/ui/interfaces/audit.interfaces";
 
 interface FilterBarPropsI {
   filters: FiltersI;

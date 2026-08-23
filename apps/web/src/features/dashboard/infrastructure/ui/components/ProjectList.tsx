@@ -2,10 +2,12 @@ import { memo } from "react";
 import { FolderKanban, Plus, ChevronRight } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 
-import { Card, Button, EmptyState } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Card } from "@shared/components/card";
+import { EmptyState } from "@shared/components/empty-state";
 
-import { APP_STATUS_DOT } from "@dashboard/infrastructure/ui/constants/dashboard.module.constants";
-import type { DashboardProjectI } from "@dashboard/infrastructure/ui/types/dashboard.module.types";
+import { APP_STATUS_DOT } from "@dashboard/infrastructure/ui/constants/dashboard.constants";
+import type { DashboardProjectI } from "@dashboard/infrastructure/ui/interfaces/dashboard.interfaces";
 
 interface ProjectListPropsI {
   projects: DashboardProjectI[];

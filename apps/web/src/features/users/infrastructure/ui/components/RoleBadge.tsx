@@ -3,8 +3,8 @@ import { memo } from "react";
 import {
   ROLE_ICONS,
   ROLE_COLORS,
-} from "@users/infrastructure/ui/constants/roles.constants";
-import type { RoleValueT } from "@users/infrastructure/ui/types/users.module.types";
+} from "@users/infrastructure/ui/constants/users.constants";
+import type { RoleValueT } from "@users/infrastructure/ui/interfaces/users.interfaces";
 
 interface RoleBadgePropsI {
   role: string;

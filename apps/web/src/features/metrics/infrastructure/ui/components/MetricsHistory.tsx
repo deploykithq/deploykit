@@ -2,24 +2,16 @@ import { memo } from "react";
 
 import { MetricCard } from "@metrics/infrastructure/ui/components";
 
-import { trpc } from "@lib/trpc";
-import { formatBytes } from "@lib/utils";
-import { useServiceMetrics } from "@lib/socket";
+import { useMetricsHistory } from "@metrics/infrastructure/ui/hooks/useMetricsHistory";
 
-interface MetricsHistoryPropsI {
-  serviceId: string;
-  containerId: string | null;
-}
+import { formatBytes } from "@lib/utils";
+
+import type { MetricsHistoryPropsI } from "@metrics/infrastructure/ui/interfaces/metrics.interfaces";
 
 export const MetricsHistory: React.FC<MetricsHistoryPropsI> = memo(
   function MetricsHistory({ serviceId }) {
-    const { data: history, isLoading } = trpc.metrics.history.useQuery(
-      { serviceId },
-      { refetchInterval: 30_000 },
-    );
-
-    // Live update via Socket.IO (replaces polling when user is watching)
-    const live = useServiceMetrics(serviceId);
+    const { history, isLoading, live, allSamples, latest } =
+      useMetricsHistory(serviceId);
 
     if (isLoading) {
       return <p className="text-sm text-text-muted py-4">Loading metrics…</p>;
@@ -33,15 +25,6 @@ export const MetricsHistory: React.FC<MetricsHistoryPropsI> = memo(
         </p>
       );
     }
-
-    // Merge history + live point (avoid duplicates by ts)
-    const allSamples =
-      live && (!history?.length || history[history.length - 1]?.ts !== live.ts)
-        ? [...(history ?? []), { ...live }]
-        : (history ?? []);
-
-    // Use live data for current values if available, fallback to last history point
-    const latest = live ?? allSamples[allSamples.length - 1];
 
     const cpuData = allSamples.map((s) => s.cpu);
     const memData = allSamples.map((s) => s.memPercent);

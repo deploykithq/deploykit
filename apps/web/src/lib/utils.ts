@@ -23,18 +23,4 @@ const timeAgo = (date: string | Date): string => {
   return `${Math.floor(seconds / 86400)}d ago`;
 };
 
-const statusColors: Record<string, string> = {
-  running: "bg-success",
-  success: "bg-success",
-  connected: "bg-success",
-  building: "bg-warning",
-  deploying: "bg-warning",
-  queued: "bg-warning",
-  stopped: "bg-text-muted",
-  idle: "bg-text-muted",
-  disconnected: "bg-text-muted",
-  error: "bg-danger",
-  failed: "bg-danger",
-};
-
-export { cn, formatBytes, timeAgo, statusColors };
+export { cn, formatBytes, timeAgo };

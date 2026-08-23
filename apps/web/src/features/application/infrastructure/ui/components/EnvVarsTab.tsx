@@ -1,9 +1,10 @@
-import { useState, useEffect, memo } from "react";
-import { Eye, EyeOff, Check } from "lucide-react";
+import { memo } from "react";
+import { Check, Eye, EyeOff } from "lucide-react";
 
-import { Card, Button } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Card } from "@shared/components/card";
 
-import { trpc } from "@lib/trpc";
+import { useEnvVarsTab } from "@application/infrastructure/ui/hooks/useEnvVarsTab";
 
 interface EnvVarsTabPropsI {
   app: any;
@@ -14,42 +15,15 @@ export const EnvVarsTab: React.FC<EnvVarsTabPropsI> = memo(function EnvVarsTab({
   app,
   applicationId,
 }) {
-  const utils = trpc.useUtils();
-
-  const [envText, setEnvText] = useState<string>("");
-  const [saved, setSaved] = useState<boolean>(false);
-  const [showValues, setShowValues] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (app.envVars && typeof app.envVars === "object") {
-      const text = Object.entries(app.envVars as Record<string, string>)
-        .map(([k, v]) => `${k}=${v}`)
-        .join("\n");
-      setEnvText(text);
-    }
-  }, [app.envVars]);
-
-  const updateMutation = trpc.application.updateEnvVars.useMutation({
-    onSuccess: () => {
-      utils.application.byId.invalidate({ id: applicationId });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-    },
-  });
-
-  const handleSave = () => {
-    const vars: Record<string, string> = {};
-    for (const line of envText.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eqIdx = trimmed.indexOf("=");
-      if (eqIdx === -1) continue;
-      const key = trimmed.slice(0, eqIdx).trim();
-      const value = trimmed.slice(eqIdx + 1).trim();
-      if (key) vars[key] = value;
-    }
-    updateMutation.mutate({ id: applicationId, envVars: vars });
-  };
+  const {
+    envText,
+    setEnvText,
+    saved,
+    showValues,
+    setShowValues,
+    saving,
+    handleSave,
+  } = useEnvVarsTab(app, applicationId);
 
   const maskEnvValues = (text: string): string =>
     text
@@ -98,8 +72,8 @@ export const EnvVarsTab: React.FC<EnvVarsTabPropsI> = memo(function EnvVarsTab({
         />
 
         <div className="flex items-center gap-3">
-          <Button onClick={handleSave} disabled={updateMutation.isPending}>
-            {updateMutation.isPending ? "Saving..." : "Save Environment"}
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? "Saving..." : "Save Environment"}
           </Button>
           {saved && (
             <span className="text-xs text-success flex items-center gap-1">

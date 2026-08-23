@@ -3,7 +3,7 @@ import { memo } from "react";
 import { MetricsHistory } from "@metrics/infrastructure/ui/components/MetricsHistory";
 import { MetricsTrendChart } from "@metrics/infrastructure/ui/components/MetricsTrendChart";
 
-import { trpc } from "@lib/trpc";
+import { useApplicationAlerts } from "@application/infrastructure/ui/hooks/useApplicationAlerts";
 
 interface MonitoringTabPropsI {
   app: any;
@@ -12,10 +12,7 @@ interface MonitoringTabPropsI {
 
 export const MonitoringTab: React.FC<MonitoringTabPropsI> = memo(
   function MonitoringTab({ app, applicationId }) {
-    const { data: openAlerts } = trpc.metrics.recentEvents.useQuery(
-      { serviceId: applicationId, onlyOpen: true, limit: 10 },
-      { refetchInterval: 30_000 },
-    );
+    const { openAlerts } = useApplicationAlerts(applicationId);
 
     return (
       <div className="space-y-4">

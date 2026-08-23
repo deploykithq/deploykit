@@ -1,30 +1,28 @@
 import { Activity } from "lucide-react";
 
-import { Card } from "@shared/components";
+import { Card } from "@shared/components/card";
 
-import { trpc } from "@lib/trpc";
+import { useAlertStats } from "@metrics/infrastructure/ui/hooks/useAlertStats";
 
 export const StatsBanner: React.FC = () => {
-  const { data } = trpc.metrics.alertStats.useQuery(undefined, {
-    refetchInterval: 30_000,
-  });
+  const { stats } = useAlertStats();
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
       {[
         {
           label: "Open alerts",
-          value: data?.openAlerts ?? "–",
-          danger: (data?.openAlerts ?? 0) > 0,
+          value: stats?.openAlerts ?? "–",
+          danger: (stats?.openAlerts ?? 0) > 0,
         },
         {
           label: "Total events",
-          value: data?.totalEvents ?? "–",
+          value: stats?.totalEvents ?? "–",
           danger: false,
         },
         {
           label: "Active rules",
-          value: data?.activeRules ?? "–",
+          value: stats?.activeRules ?? "–",
           danger: false,
         },
       ].map((s) => (

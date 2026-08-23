@@ -5,11 +5,11 @@ import { trpc } from "@lib/trpc";
 import {
   BACKUP_REFRESH_DELAY_MS,
   SUCCESS_FEEDBACK_MS,
-} from "@database/infrastructure/ui/constants/database.module.constants";
+} from "@database/infrastructure/ui/constants/database.constants";
 import type {
   BackupI,
   DatabaseI,
-} from "@database/infrastructure/ui/interfaces/database.module.interfaces";
+} from "@database/infrastructure/ui/interfaces/database.interfaces";
 
 interface BackupManagerResultPropsI {
   // list

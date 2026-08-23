@@ -1,33 +1,21 @@
 import { memo, useState } from "react";
 
-import { Card, LogSearchPanel } from "@shared/components";
+import { Card } from "@shared/components/card";
+import { LogSearchPanel } from "@shared/components/log-search-panel";
 import { LogViewer } from "@application/infrastructure/ui/components/LogViewer";
 
-import { trpc } from "@lib/trpc";
-import { useContainerLogs } from "@lib/socket";
+import { useApplicationLogs } from "@application/infrastructure/ui/hooks/useApplicationLogs";
+
 import { cn } from "@lib/utils";
+
+import type { LogModeT } from "@application/infrastructure/ui/interfaces/application.interfaces";
 
 interface LogsTabPropsI {
   app: any;
 }
 
-type ModeT = "live" | "history";
-
 export const LogsTab: React.FC<LogsTabPropsI> = memo(function LogsTab({ app }) {
-  const [mode, setMode] = useState<ModeT>("live");
-
-  const { data: logsData } = trpc.application.logs.useQuery(
-    { id: app.id, tail: 200 },
-    { enabled: mode === "live" && !!app.containerId },
-  );
-  const { logs: liveLogs } = useContainerLogs(
-    mode === "live" ? app.containerId : null,
-  );
-
-  const allLogs = [
-    ...(logsData?.logs ? logsData.logs.split("\n") : []),
-    ...liveLogs,
-  ];
+  const { mode, setMode, allLogs } = useApplicationLogs(app);
 
   return (
     <Card>
@@ -38,7 +26,7 @@ export const LogsTab: React.FC<LogsTabPropsI> = memo(function LogsTab({ app }) {
             <span className="text-xs text-text-muted">No running container</span>
           )}
           <div className="flex rounded-lg border border-border overflow-hidden text-xs">
-            {(["live", "history"] as ModeT[]).map((m) => (
+            {(["live", "history"] as LogModeT[]).map((m) => (
               <button
                 key={m}
                 onClick={() => setMode(m)}

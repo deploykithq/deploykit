@@ -4,7 +4,8 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 
-import { Card, Button } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Card } from "@shared/components/card";
 
 import { useAuthStore } from "@lib/auth";
 import { useTerminal } from "@lib/socket";

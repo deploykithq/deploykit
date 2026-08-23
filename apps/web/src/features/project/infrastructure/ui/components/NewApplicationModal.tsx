@@ -1,16 +1,21 @@
-import { memo, useState } from "react";
-import { SourceType } from "@deploykit/shared";
+import { memo } from "react";
+import type { SourceType } from "@deploykit/shared";
 
-import { Modal, Button, Input, Select } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Input } from "@shared/components/input";
+import { Modal } from "@shared/components/modal";
+import { Select } from "@shared/components/select";
+
 import { ServerSelector } from "@project/infrastructure/ui/components/ServerSelector";
 
-import { trpc } from "@lib/trpc";
+import { useNewApplicationForm } from "@project/infrastructure/ui/hooks/useNewApplicationForm";
 
 import {
   BUILD_TYPE_OPTIONS,
   SOURCE_TYPE_OPTIONS,
-} from "@project/infrastructure/ui/constants/project.module.constants";
-import type { BuildTypeT } from "@project/infrastructure/ui/types/project.module.types";
+} from "@project/infrastructure/ui/constants/project.constants";
+
+import type { BuildTypeT } from "@project/infrastructure/ui/interfaces/project.interfaces";
 
 interface NewApplicationModalPropsI {
   open: boolean;
@@ -21,49 +26,29 @@ interface NewApplicationModalPropsI {
 
 export const NewApplicationModal: React.FC<NewApplicationModalPropsI> = memo(
   function NewApplicationModal({ open, onClose, projectId, onCreated }) {
-    const [name, setName] = useState<string>("");
-    const [sourceType, setSourceType] = useState<SourceType>("github");
-    const [repoUrl, setRepoUrl] = useState<string>("");
-    const [branch, setBranch] = useState<string>("main");
-    const [buildType, setBuildType] = useState<BuildTypeT>("nixpacks");
-    const [port, setPort] = useState<string>("3000");
-    const [serverId, setServerId] = useState<string | null>(null);
-    const [sourceToken, setSourceToken] = useState<string>("");
-    const [rootDirectory, setRootDirectory] = useState<string>("");
-
-    const createMutation = trpc.application.create.useMutation({
-      onSuccess: () => {
-        onCreated();
-        resetForm();
-      },
-      onError: (err) => alert(err.message),
-    });
-
-    const resetForm = () => {
-      setName("");
-      setRepoUrl("");
-      setRootDirectory("");
-      setSourceToken("");
-      setServerId(null);
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      createMutation.mutate({
-        projectId,
-        name,
-        sourceType,
-        repositoryUrl: repoUrl || undefined,
-        branch,
-        sourceToken: sourceToken || undefined,
-        rootDirectory: rootDirectory || undefined,
-        buildType,
-        port: parseInt(port) || undefined,
-        serverId: serverId ?? undefined,
-      });
-    };
-
-    const isGitSource = sourceType !== "docker_image";
+    const {
+      name,
+      setName,
+      sourceType,
+      setSourceType,
+      repoUrl,
+      setRepoUrl,
+      branch,
+      setBranch,
+      buildType,
+      setBuildType,
+      port,
+      setPort,
+      serverId,
+      setServerId,
+      sourceToken,
+      setSourceToken,
+      rootDirectory,
+      setRootDirectory,
+      creating,
+      isGitSource,
+      handleSubmit,
+    } = useNewApplicationForm(projectId, onCreated);
 
     return (
       <Modal open={open} onClose={onClose} title="New Application">
@@ -131,8 +116,8 @@ export const NewApplicationModal: React.FC<NewApplicationModalPropsI> = memo(
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={createMutation.isPending}>
-              {createMutation.isPending ? "Creating..." : "Create Application"}
+            <Button type="submit" disabled={creating}>
+              {creating ? "Creating..." : "Create Application"}
             </Button>
           </div>
         </form>

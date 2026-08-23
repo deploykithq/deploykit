@@ -2,7 +2,7 @@ import {
   ROLE_OPTIONS,
   ROLE_DESCRIPTIONS,
   ROLE_ICONS,
-} from "@users/infrastructure/ui/constants/roles.constants";
+} from "@users/infrastructure/ui/constants/users.constants";
 
 export const RoleLegend: React.FC = () => {
   return (

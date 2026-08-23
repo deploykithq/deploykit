@@ -1,8 +1,9 @@
-import { memo, useState } from "react";
+import { memo } from "react";
 
-import { Modal, Button } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Modal } from "@shared/components/modal";
 
-import { trpc } from "@lib/trpc";
+import { useAddMemberForm } from "@project/infrastructure/ui/hooks/useAddMemberForm";
 
 interface AddMemberModalPropsI {
   open: boolean;
@@ -12,34 +13,17 @@ interface AddMemberModalPropsI {
 
 export const AddMemberModal: React.FC<AddMemberModalPropsI> = memo(
   function AddMemberModal({ open, onClose, projectId }) {
-    const [selectedUserId, setSelectedUserId] = useState("");
-    const [selectedRole, setSelectedRole] = useState("viewer");
-    const utils = trpc.useUtils();
-
-    const { data: availableUsers = [], isLoading } =
-      trpc.projectMember.availableUsers.useQuery(
-        { projectId },
-        { enabled: open },
-      );
-
-    const addMutation = trpc.projectMember.add.useMutation({
-      onSuccess: () => {
-        utils.projectMember.list.invalidate({ projectId });
-        utils.projectMember.availableUsers.invalidate({ projectId });
-        setSelectedUserId("");
-        setSelectedRole("viewer");
-        onClose();
-      },
-    });
-
-    const handleSubmit = () => {
-      if (!selectedUserId) return;
-      addMutation.mutate({
-        projectId,
-        userId: selectedUserId,
-        role: selectedRole as any,
-      });
-    };
+    const {
+      selectedUserId,
+      setSelectedUserId,
+      selectedRole,
+      setSelectedRole,
+      availableUsers,
+      isLoading,
+      adding,
+      addError,
+      handleSubmit,
+    } = useAddMemberForm(projectId, open, onClose);
 
     return (
       <Modal open={open} onClose={onClose} title="Add Project Member">
@@ -120,8 +104,8 @@ export const AddMemberModal: React.FC<AddMemberModalPropsI> = memo(
             </div>
           </div>
 
-          {addMutation.error && (
-            <p className="text-xs text-danger">{addMutation.error.message}</p>
+          {addError && (
+            <p className="text-xs text-danger">{addError.message}</p>
           )}
 
           <div className="flex justify-end gap-2 pt-2">
@@ -130,9 +114,9 @@ export const AddMemberModal: React.FC<AddMemberModalPropsI> = memo(
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={!selectedUserId || addMutation.isPending}
+              disabled={!selectedUserId || adding}
             >
-              {addMutation.isPending ? "Adding…" : "Add Member"}
+              {adding ? "Adding…" : "Add Member"}
             </Button>
           </div>
         </div>

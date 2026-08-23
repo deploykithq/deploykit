@@ -1,6 +1,7 @@
 import { useLoginForm } from "@auth/infrastructure/ui/hooks/useLoginForm";
 
-import { Button, Input } from "@shared/components";
+import { Button } from "@shared/components/button";
+import { Input } from "@shared/components/input";
 import { AppLogo, ErrorMessage } from "@auth/infrastructure/ui/components";
 
 import { COPY } from "@auth/infrastructure/ui/constants/auth.constants";
