@@ -1,0 +1,35 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "0f37e682d8c9dd3d13eb23ea25b9eee5922b2eb8",
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "package-name": "deploykit",
+      "changelog-path": "CHANGELOG.md",
+      "include-component-in-tag": false,
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": false,
+      "changelog-sections": [
+        { "type": "feat", "section": "Features" },
+        { "type": "fix", "section": "Bug Fixes" },
+        { "type": "perf", "section": "Performance Improvements" },
+        { "type": "refactor", "section": "Refactors" },
+        { "type": "docs", "section": "Documentation" },
+        { "type": "build", "section": "Build System", "hidden": true },
+        { "type": "ci", "section": "Continuous Integration", "hidden": true },
+        { "type": "chore", "section": "Miscellaneous", "hidden": true },
+        { "type": "test", "section": "Tests", "hidden": true },
+        { "type": "style", "section": "Styles", "hidden": true }
+      ],
+      "extra-files": [
+        { "type": "json", "path": "apps/api/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "apps/web/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "packages/shared/package.json", "jsonpath": "$.version" },
+        {
+          "type": "generic",
+          "path": "apps/web/src/features/settings/infrastructure/ui/constants/settings.constants.ts"
+        }
+      ]
+    }
+  }
+}
