@@ -1,0 +1,40 @@
+name: PR Title
+
+# Pull requests are squash-merged, so the PR title becomes the commit message on
+# master — and that commit is what generates the changelog. A non-conventional
+# title is not an error, it is a change that silently vanishes from the release
+# notes. This check makes that failure loud.
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  conventional-title:
+    name: Conventional Commit title
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate PR title
+        uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            perf
+            refactor
+            docs
+            test
+            build
+            ci
+            chore
+            style
+            revert
+          # On a single-commit PR, GitHub offers that commit message instead of the
+          # PR title when squashing, so the commit message has to hold up too.
+          validateSingleCommit: true

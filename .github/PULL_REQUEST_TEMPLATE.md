@@ -1,3 +1,8 @@
+<!--
+The PR title becomes the squash-merge commit message and feeds the changelog.
+Use a Conventional Commit title, e.g. "feat: add Bitbucket webhook support".
+-->
+
 ## What does this PR do?
 
 <!-- A brief description of the changes. -->
