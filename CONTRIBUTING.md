@@ -46,6 +46,12 @@ docs: update environment variable reference
 refactor: simplify Docker service factory
 ```
 
+This is not a style preference. Pull requests are squash-merged, so **your PR title
+becomes the commit message** on `master`, and that commit is what generates the
+changelog. A title that isn't a Conventional Commit doesn't fail loudly — it quietly
+leaves your change out of the release notes. A CI check validates the title; if it
+fails, edit the title and the check re-runs on its own, no need to push again.
+
 ### Code Style
 
 - Run `pnpm lint` before submitting (TypeScript type checking across all packages)
@@ -89,6 +95,27 @@ Always include generated migration files in your PR.
 - Link related issues using `Closes #123`
 - Add screenshots for UI changes
 - Update the README if you're adding user-facing configuration
+
+## Releases
+
+Releases are automated with [release-please](https://github.com/googleapis/release-please).
+
+1. Merging a `feat:` or `fix:` PR into `master` makes the bot open — or update — a pull
+   request titled `chore(master): release X.Y.Z`, containing the generated
+   `CHANGELOG.md` and the version bump applied across the workspace.
+2. That PR stays open and keeps absorbing new commits until a maintainer merges it.
+   Nothing is published before that.
+3. Merging it tags `vX.Y.Z` and publishes the GitHub Release.
+
+While the version is below `1.0.0`, `feat:` bumps the minor and `fix:` bumps the patch;
+breaking changes bump the minor rather than jumping to `1.0.0`. To cut `1.0.0`
+deliberately, add `Release-As: 1.0.0` to a commit body.
+
+Don't edit `CHANGELOG.md` or any `version` field by hand — both are generated.
+
+**Maintainer setup (one time):** in *Settings → Actions → General → Workflow
+permissions*, enable *"Allow GitHub Actions to create and approve pull requests"*.
+Without it the bot cannot open the release PR and the workflow fails.
 
 ## Reporting Bugs
 
