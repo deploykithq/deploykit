@@ -23,6 +23,7 @@ const metricSamples = pgTable(
     memAvg: real("mem_avg").notNull(), // percent
     memMax: real("mem_max").notNull(), // percent
     memUsed: bigint("mem_used", { mode: "number" }).notNull(), // bytes (avg)
+    diskUsed: bigint("disk_used", { mode: "number" }).notNull().default(0), // bytes (avg)
     netRx: bigint("net_rx", { mode: "number" }).notNull(), // cumulative bytes at bucket close
     netTx: bigint("net_tx", { mode: "number" }).notNull(),
     samples: integer("samples").notNull(),

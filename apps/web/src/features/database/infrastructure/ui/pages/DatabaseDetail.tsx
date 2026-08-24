@@ -135,7 +135,7 @@ export const DatabaseDetailPage: React.FC = () => {
         <BackupsTab db={db} databaseId={databaseId} />
       )}
       {activeTab === "monitoring" && (
-        <MonitoringTab db={db} databaseId={databaseId} />
+        <MonitoringTab databaseId={databaseId} />
       )}
       {activeTab === "logs" && <LogsTab db={db} />}
 

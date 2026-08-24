@@ -142,6 +142,7 @@ export interface MetricsUpdate {
   memTotal: number;
   netRx: number;
   netTx: number;
+  diskUsed: number;
 }
 
 /**

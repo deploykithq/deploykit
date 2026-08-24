@@ -7,7 +7,12 @@ import {
   alertRules,
   alertEvents,
 } from "../db/schema/index";
-import { storeSample, pushPending, parseDockerStats } from "../services/metrics";
+import {
+  storeSample,
+  pushPending,
+  parseDockerStats,
+  getDiskUsage,
+} from "../services/metrics";
 import { notify } from "../services/notifier";
 import { getIO } from "../lib/socket";
 import { redis } from "../lib/redis";
@@ -153,12 +158,13 @@ async function pollContainer(
   serviceId: string,
   serviceType: "application" | "database",
   serviceName: string,
+  diskUsed: number,
 ): Promise<void> {
   try {
     const container = docker.getContainer(containerId);
     const raw = (await container.stats({ stream: false })) as any;
     const parsed = parseDockerStats(raw);
-    const sample = { ts: Date.now(), ...parsed };
+    const sample = { ts: Date.now(), ...parsed, diskUsed };
 
     await storeSample(serviceId, sample);
     // Buffer for the rollup scheduler to persist into long-term history.
@@ -206,12 +212,25 @@ async function tick(): Promise<void> {
       }),
     ]);
 
+    // One Redis round-trip for the whole tick; the disk scheduler refreshes
+    // these keys every 5 minutes.
+    const diskById = await getDiskUsage([
+      ...apps.map((a) => a.id),
+      ...dbs.map((d) => d.id),
+    ]);
+
     const tasks: Promise<void>[] = [];
 
     for (const app of apps) {
       if (app.containerId) {
         tasks.push(
-          pollContainer(app.containerId, app.id, "application", app.name),
+          pollContainer(
+            app.containerId,
+            app.id,
+            "application",
+            app.name,
+            diskById.get(app.id) ?? 0,
+          ),
         );
       }
     }
@@ -219,7 +238,13 @@ async function tick(): Promise<void> {
     for (const db_ of dbs) {
       if (db_.containerId) {
         tasks.push(
-          pollContainer(db_.containerId, db_.id, "database", db_.name),
+          pollContainer(
+            db_.containerId,
+            db_.id,
+            "database",
+            db_.name,
+            diskById.get(db_.id) ?? 0,
+          ),
         );
       }
     }
