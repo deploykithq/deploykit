@@ -205,7 +205,7 @@ export const ApplicationDetailPage = () => {
           </Suspense>
         )}
         {activeTab === "monitoring" && (
-          <MonitoringTab app={app} applicationId={applicationId} />
+          <MonitoringTab applicationId={applicationId} />
         )}
         {activeTab === "security" && (
           <SecurityTab applicationId={applicationId} />

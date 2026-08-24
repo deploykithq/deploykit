@@ -8,6 +8,7 @@ export interface MetricSample {
   memTotal: number; // bytes
   netRx: number; // bytes total (cumulative)
   netTx: number; // bytes total (cumulative)
+  diskUsed: number; // bytes (writable layer + volumes); 0 until the disk scheduler has run
 }
 
 export interface CurrentMetrics extends MetricSample {
@@ -23,6 +24,28 @@ const RING_SIZE = 60; // 60 samples × 30s = 30 min of history
 const TTL_SEC = 60 * 60; // expire after 1h of inactivity
 const PENDING_TTL_SEC = 5 * 60; // safety expiry; drained every 60s by the rollup scheduler
 const PENDING_MAX = 240; // cap unbounded growth if the rollup scheduler stalls
+
+// Disk usage is sampled on its own slower cadence by the disk scheduler
+// (docker.df() is expensive), so it lives in its own key and the 30s metrics
+// tick just stamps the last known value onto each sample.
+const DISK_KEY = (id: string) => `metrics:disk:${id}`;
+const DISK_TTL_SEC = 15 * 60; // three disk ticks of slack
+
+/** Last known disk usage in bytes for each service; 0 when never sampled. */
+export async function getDiskUsage(
+  serviceIds: string[],
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (serviceIds.length === 0) return out;
+
+  const raw = await redis.mget(serviceIds.map(DISK_KEY));
+  serviceIds.forEach((id, i) => {
+    out.set(id, Number(raw[i]) || 0);
+  });
+  return out;
+}
+
+export { DISK_KEY, DISK_TTL_SEC };
 
 export async function storeSample(
   serviceId: string,
@@ -90,7 +113,7 @@ export interface DockerStatsRaw {
 
 export function parseDockerStats(
   raw: DockerStatsRaw,
-): Omit<MetricSample, "ts"> {
+): Omit<MetricSample, "ts" | "diskUsed"> {
   const cpuDelta =
     raw.cpu_stats.cpu_usage.total_usage -
     raw.precpu_stats.cpu_usage.total_usage;

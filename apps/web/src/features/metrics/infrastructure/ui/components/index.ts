@@ -1,9 +1,9 @@
 export { AlertToasts } from "./AlertToasts";
+export { ChartTooltip } from "./ChartTooltip";
 export { CreateRuleModal } from "./CreateRuleModal";
 export { EventRow } from "./EventRow";
-export { MetricCard } from "./MetricCard";
-export { MetricsHistory } from "./MetricsHistory";
-export { MetricsTrendChart } from "./MetricsTrendChart";
+export { MetricChart } from "./MetricChart";
+export { MetricPanel } from "./MetricPanel";
+export { MonitoringPanel } from "./MonitoringPanel";
 export { RuleCard } from "./RuleCard";
-export { Sparkline } from "./Sparkline";
 export { StatsBanner } from "./StatsBanner";

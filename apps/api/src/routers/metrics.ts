@@ -82,6 +82,7 @@ export const metricsRouter = router({
         mem: r.memAvg,
         memMax: r.memMax,
         memUsed: r.memUsed,
+        disk: r.diskUsed,
         netRx: r.netRx,
         netTx: r.netTx,
       }));
@@ -100,6 +101,8 @@ export const metricsRouter = router({
               mem: s.memPercent,
               memMax: s.memPercent,
               memUsed: s.memUsed,
+              // Ring entries written before this field existed carry undefined.
+              disk: s.diskUsed ?? 0,
               netRx: s.netRx,
               netTx: s.netTx,
             });

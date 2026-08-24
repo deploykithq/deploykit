@@ -25,6 +25,7 @@ interface Aggregate {
   memAvg: number;
   memMax: number;
   memUsed: number;
+  diskUsed: number;
   netRx: number;
   netTx: number;
   samples: number;
@@ -52,7 +53,8 @@ function aggregateByMinute(samples: MetricSample[]): Aggregate[] {
       cpuMax = 0,
       memSum = 0,
       memMax = 0,
-      memUsedSum = 0;
+      memUsedSum = 0,
+      diskUsedSum = 0;
     // net counters are cumulative — keep the latest sample's value
     const last = list.reduce((a, b) => (b.ts > a.ts ? b : a), list[0]!);
     for (const s of list) {
@@ -61,6 +63,8 @@ function aggregateByMinute(samples: MetricSample[]): Aggregate[] {
       memSum += s.memPercent;
       if (s.memPercent > memMax) memMax = s.memPercent;
       memUsedSum += s.memUsed;
+      // Samples buffered before this field existed carry undefined.
+      diskUsedSum += s.diskUsed ?? 0;
     }
     out.push({
       bucket: new Date(bucketMs),
@@ -69,6 +73,7 @@ function aggregateByMinute(samples: MetricSample[]): Aggregate[] {
       memAvg: memSum / n,
       memMax,
       memUsed: Math.round(memUsedSum / n),
+      diskUsed: Math.round(diskUsedSum / n),
       netRx: last.netRx,
       netTx: last.netTx,
       samples: n,
@@ -97,6 +102,7 @@ async function rollupService(
         memAvg: agg.memAvg,
         memMax: agg.memMax,
         memUsed: agg.memUsed,
+        diskUsed: agg.diskUsed,
         netRx: agg.netRx,
         netTx: agg.netTx,
         samples: agg.samples,
@@ -115,6 +121,7 @@ async function rollupService(
           memAvg: sql`(${metricSamples.memAvg} * ${metricSamples.samples} + ${agg.memAvg} * ${agg.samples}) / (${metricSamples.samples} + ${agg.samples})`,
           memMax: sql`greatest(${metricSamples.memMax}, ${agg.memMax})`,
           memUsed: sql`((${metricSamples.memUsed} * ${metricSamples.samples} + ${agg.memUsed} * ${agg.samples}) / (${metricSamples.samples} + ${agg.samples}))::bigint`,
+          diskUsed: sql`((${metricSamples.diskUsed} * ${metricSamples.samples} + ${agg.diskUsed} * ${agg.samples}) / (${metricSamples.samples} + ${agg.samples}))::bigint`,
           netRx: sql`greatest(${metricSamples.netRx}, ${agg.netRx})`,
           netTx: sql`greatest(${metricSamples.netTx}, ${agg.netTx})`,
           samples: sql`${metricSamples.samples} + ${agg.samples}`,
@@ -133,10 +140,10 @@ async function compactAndPrune(): Promise<void> {
   await db.execute(sql`
     INSERT INTO metric_samples
       (service_id, service_type, resolution, bucket,
-       cpu_avg, cpu_max, mem_avg, mem_max, mem_used, net_rx, net_tx, samples)
+       cpu_avg, cpu_max, mem_avg, mem_max, mem_used, disk_used, net_rx, net_tx, samples)
     SELECT service_id, service_type, '1h', date_trunc('hour', bucket),
            avg(cpu_avg), max(cpu_max), avg(mem_avg), max(mem_max),
-           avg(mem_used)::bigint, max(net_rx), max(net_tx), sum(samples)
+           avg(mem_used)::bigint, avg(disk_used)::bigint, max(net_rx), max(net_tx), sum(samples)
     FROM metric_samples
     WHERE resolution = '1m'
       AND bucket < now() - make_interval(hours => ${RAW_RETENTION_HOURS})
