@@ -7,6 +7,7 @@ import {
   Shield,
   Bell,
   LayoutGrid,
+  MonitorSmartphone,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -16,6 +17,13 @@ const NAV_ITEMS = [
   { to: "/servers", label: "Servers", icon: Server, exact: true },
   { to: "/alerts", label: "Alerts", icon: Bell, exact: true },
   { to: "/users", label: "Users", icon: Users, exact: true, adminOnly: true },
+  {
+    to: "/sessions",
+    label: "Sessions",
+    icon: MonitorSmartphone,
+    exact: true,
+    adminOnly: true,
+  },
   {
     to: "/audit-log",
     label: "Audit Log",

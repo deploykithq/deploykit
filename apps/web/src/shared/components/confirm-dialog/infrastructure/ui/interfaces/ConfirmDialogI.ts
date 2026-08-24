@@ -7,6 +7,8 @@ interface ConfirmDialogPropsI {
   title: string;
   description: string;
   confirmText?: string;
+  /** Texto mientras la acción está en curso. Por defecto asume un borrado. */
+  pendingText?: string;
   variant?: ConfirmDialogVariantT;
   isPending?: boolean;
 }

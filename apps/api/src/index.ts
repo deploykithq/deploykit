@@ -24,6 +24,7 @@ import { startDiskScheduler } from "./workers/disk.scheduler";
 import { startAutoscaleScheduler } from "./workers/autoscale.scheduler";
 import { startImageCleanupScheduler } from "./workers/image-cleanup.scheduler";
 import { startAuditCleanupScheduler } from "./workers/audit-cleanup.scheduler";
+import { startSessionCleanupScheduler } from "./workers/session-cleanup.scheduler";
 import { startLogCollector } from "./workers/log-collector.scheduler";
 import { startLogCleanupScheduler } from "./workers/log-cleanup.scheduler";
 import { WebhookService } from "./services/webhook";
@@ -269,6 +270,7 @@ async function main() {
   startAutoscaleScheduler();
   startImageCleanupScheduler();
   startAuditCleanupScheduler();
+  startSessionCleanupScheduler();
   startLogCollector();
   startLogCleanupScheduler();
 }

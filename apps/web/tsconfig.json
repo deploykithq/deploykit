@@ -17,6 +17,7 @@
       "@users/*": ["./src/features/users/*"],
       "@database/*": ["./src/features/database/*"],
       "@audit/*": ["./src/features/audit/*"],
+      "@sessions/*": ["./src/features/sessions/*"],
       "@metrics/*": ["./src/features/metrics/*"],
       "@application/*": ["./src/features/application/*"],
       "@dashboard/*": ["./src/features/dashboard/*"],

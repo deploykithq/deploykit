@@ -3,7 +3,7 @@ import { Server as SocketServer } from "socket.io";
 import { registerTerminalHandlers } from "../services/terminal";
 
 import {
-  verifySocketAuth,
+  verifySocketSession,
   canViewDeployment,
   canViewService,
 } from "./socket-auth";
@@ -40,12 +40,15 @@ const initSocket = (
 
   // Every connection must present a valid JWT in the handshake.
   io.use(async (socket, next) => {
-    const user = await verifySocketAuth(socket.handshake.auth?.token);
-    if (!user) {
+    const auth = await verifySocketSession(socket.handshake.auth?.token);
+    if (!auth) {
       next(new Error("Unauthorized"));
       return;
     }
-    socket.data.user = user;
+    socket.data.user = auth.user;
+    // Recorded so revoking the session can drop this connection immediately —
+    // the handshake is the only point where the JWT is checked.
+    socket.data.sessionId = auth.sessionId;
     next();
   });
 
@@ -110,6 +113,24 @@ const getIO = (): SocketServer => {
   return io;
 };
 
+/**
+ * Drops every live connection belonging to a session. Socket.IO only verifies
+ * the JWT during the handshake, so without this an open log or terminal stream
+ * would outlive its own revocation.
+ */
+const disconnectSession = (sessionId: string): number => {
+  if (!io) return 0;
+
+  let closed = 0;
+  for (const socket of io.sockets.sockets.values()) {
+    if (socket.data.sessionId === sessionId) {
+      socket.disconnect(true);
+      closed++;
+    }
+  }
+  return closed;
+};
+
 const emitDeployLog = (deploymentId: string, log: string) => {
   io?.to(`deployment:${deploymentId}`).emit("deploy:log", {
     deploymentId,
@@ -143,6 +164,7 @@ const emitServiceStatus = (serviceId: string, status: string) => {
 export {
   initSocket,
   getIO,
+  disconnectSession,
   emitDeployLog,
   emitDeployStatus,
   emitContainerLog,

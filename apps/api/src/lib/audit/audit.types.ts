@@ -41,6 +41,8 @@ type AuditActionT =
   | "notification.create"
   | "notification.update"
   | "notification.delete"
+  // Sessions (admin actions)
+  | "session.revoke"
   // Project members
   | "project_member.add"
   | "project_member.update"
@@ -52,6 +54,7 @@ type ResourceTypeT =
   | "database"
   | "server"
   | "user"
+  | "session"
   | "notification_channel";
 
 export type { AuditActionT, ResourceTypeT };

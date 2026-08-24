@@ -18,6 +18,7 @@ export default defineConfig({
       "@users": path.resolve(__dirname, "./src/features/users"),
       "@database": path.resolve(__dirname, "./src/features/database"),
       "@audit": path.resolve(__dirname, "./src/features/audit"),
+      "@sessions": path.resolve(__dirname, "./src/features/sessions"),
       "@metrics": path.resolve(__dirname, "./src/features/metrics"),
       "@application": path.resolve(__dirname, "./src/features/application"),
       "@dashboard": path.resolve(__dirname, "./src/features/dashboard"),

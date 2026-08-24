@@ -10,6 +10,7 @@ import {
 import { db } from "../db/index";
 
 import { getProjectRole } from "./permissions";
+import { revokedSessionStore } from "./redis";
 
 import type { UserT } from "../db/schema/index";
 
@@ -17,26 +18,39 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Verify a socket JWT and resolve the full user record.
- * Returns null on any failure (missing/invalid/expired token, unknown user).
+ * Verify a socket JWT and resolve both the user and the session it belongs to.
+ * Returns null on any failure (missing/invalid/expired token, unknown user, or
+ * a session that has been revoked).
  */
-const verifySocketAuth = async (
+const verifySocketSession = async (
   token: string | undefined,
-): Promise<UserT | null> => {
+): Promise<{ user: UserT; sessionId: string | null } | null> => {
   if (!token || typeof token !== "string") return null;
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET!, {
       algorithms: ["HS256"],
-    }) as { userId: string };
+    }) as { userId: string; sid?: string };
+
+    // Tokens minted before sessions existed carry no sid; they simply age out.
+    if (payload.sid && (await revokedSessionStore.isRevoked(payload.sid))) {
+      return null;
+    }
 
     const user = await db.query.users.findFirst({
       where: eq(users.id, payload.userId),
     });
-    return user ?? null;
+    if (!user) return null;
+
+    return { user, sessionId: payload.sid ?? null };
   } catch {
     return null;
   }
 };
+
+/** Same check, when only the user record is needed. */
+const verifySocketAuth = async (
+  token: string | undefined,
+): Promise<UserT | null> => (await verifySocketSession(token))?.user ?? null;
 
 /**
  * Resolve the owning project of an application or database, referenced
@@ -100,4 +114,9 @@ const canViewService = async (user: UserT, ref: string): Promise<boolean> => {
   return (await getProjectRole(user, projectId)) !== null;
 };
 
-export { verifySocketAuth, canViewDeployment, canViewService };
+export {
+  verifySocketAuth,
+  verifySocketSession,
+  canViewDeployment,
+  canViewService,
+};

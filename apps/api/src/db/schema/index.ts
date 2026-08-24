@@ -12,3 +12,4 @@ export * from "./metric-samples";
 export * from "./container-logs";
 export * from "./project-members";
 export * from "./notification-channels";
+export * from "./sessions";

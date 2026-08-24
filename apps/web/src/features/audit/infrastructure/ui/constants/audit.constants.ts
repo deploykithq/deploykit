@@ -28,6 +28,7 @@ const ACTION_LABELS: Record<string, string> = {
   "user.update_role": "Changed user role",
   "user.reset_password": "Reset user password",
   "user.delete": "Deleted user",
+  "session.revoke": "Revoked session",
 };
 
 const RESOURCE_COLORS: Record<string, string> = {
@@ -38,6 +39,7 @@ const RESOURCE_COLORS: Record<string, string> = {
     "bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400",
   server: "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400",
   user: "bg-pink-50 text-pink-700 dark:bg-pink-900/20 dark:text-pink-400",
+  session: "bg-surface-2 text-text-secondary",
 };
 
 const ACTION_COLORS: Record<string, string> = {
@@ -46,6 +48,7 @@ const ACTION_COLORS: Record<string, string> = {
   deploy: "text-success",
   create: "text-accent",
   reset_password: "text-warning",
+  revoke: "text-warning",
 };
 
 export { ACTION_LABELS, RESOURCE_COLORS, ACTION_COLORS };

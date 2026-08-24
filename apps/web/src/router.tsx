@@ -37,6 +37,11 @@ const AuditLogPage = lazy(() =>
     default: m.AuditLogPage,
   })),
 );
+const SessionsPage = lazy(() =>
+  import("@sessions/infrastructure/ui/pages/Sessions").then((m) => ({
+    default: m.SessionsPage,
+  })),
+);
 const AlertsPage = lazy(() =>
   import("@metrics/infrastructure/ui/pages/Alerts").then((m) => ({
     default: m.AlertsPage,
@@ -153,6 +158,12 @@ export const auditLogRoute = createRoute({
   component: withSuspense(AuditLogPage),
 });
 
+export const sessionsRoute = createRoute({
+  getParentRoute: () => authLayoutRoute,
+  path: "/sessions",
+  component: withSuspense(SessionsPage),
+});
+
 export const alertsRoute = createRoute({
   getParentRoute: () => authLayoutRoute,
   path: "/alerts",
@@ -196,6 +207,7 @@ const routeTree = rootRoute.addChildren([
     usersRoute,
     settingsRoute,
     auditLogRoute,
+    sessionsRoute,
     alertsRoute,
     templatesRoute,
   ]),

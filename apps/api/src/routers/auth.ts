@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import jwt from "jsonwebtoken";
@@ -8,7 +9,13 @@ import { router, publicProcedure, protectedProcedure } from "../trpc";
 import { users } from "../db/schema/index";
 
 import { logAction } from "../lib/audit/audit";
-import { refreshTokenStore } from "../lib/redis";
+import { refreshTokenStore, ACCESS_TOKEN_TTL_SEC } from "../lib/redis";
+import {
+  hashToken,
+  createSession,
+  rotateSession,
+  revokeSessionByToken,
+} from "../lib/sessions";
 
 export const authRouter = router({
   hasUsers: publicProcedure.query(async ({ ctx }) => {
@@ -44,8 +51,16 @@ export const authRouter = router({
         .values({ email: input.email, password: hashedPassword, role: "admin" })
         .returning();
 
-      const tokens = generateTokens(user!.id);
-      await refreshTokenStore.set(tokens.refreshToken, user!.id);
+      const sessionId = randomUUID();
+      const tokens = generateTokens(user!.id, sessionId);
+      await createSession({
+        db: ctx.db,
+        sessionId,
+        userId: user!.id,
+        token: tokens.refreshToken,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+      });
       await logAction(
         { db: ctx.db, user: user!, ip: ctx.ip },
         { action: "auth.register" },
@@ -69,8 +84,16 @@ export const authRouter = router({
       const valid = await bcrypt.compare(input.password, user.password);
       if (!valid) throw new Error("Invalid credentials");
 
-      const tokens = generateTokens(user.id);
-      await refreshTokenStore.set(tokens.refreshToken, user.id);
+      const sessionId = randomUUID();
+      const tokens = generateTokens(user.id, sessionId);
+      await createSession({
+        db: ctx.db,
+        sessionId,
+        userId: user.id,
+        token: tokens.refreshToken,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+      });
       await logAction(
         { db: ctx.db, user, ip: ctx.ip },
         { action: "auth.login" },
@@ -98,8 +121,10 @@ export const authRouter = router({
         throw new Error("Invalid refresh token");
       }
 
-      // Step 2: validate against Redis whitelist
-      const storedUserId = await refreshTokenStore.get(input.refreshToken);
+      // Step 2: validate against Redis whitelist (keyed by token hash)
+      const storedUserId = await refreshTokenStore.get(
+        hashToken(input.refreshToken),
+      );
       if (!storedUserId || storedUserId !== payload.userId) {
         throw new Error("Refresh token revoked or not found");
       }
@@ -110,19 +135,34 @@ export const authRouter = router({
       });
       if (!user) throw new Error("User not found");
 
-      // Step 4: rotate — revoke old, issue new
-      await refreshTokenStore.del(input.refreshToken);
-      const tokens = generateTokens(user.id);
-      await refreshTokenStore.set(tokens.refreshToken, user.id);
+      // Step 4: rotate — move the session onto a fresh token. The session row
+      // is authoritative, so a revoked (or unknown) session is rejected here
+      // even if its Redis key somehow outlived the revoke.
+      const refreshToken = generateRefreshToken(user.id);
+      const rotated = await rotateSession({
+        db: ctx.db,
+        oldToken: input.refreshToken,
+        newToken: refreshToken,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+      });
+      if (!rotated) {
+        await refreshTokenStore.del(hashToken(input.refreshToken));
+        throw new Error("Refresh token revoked or not found");
+      }
 
-      return { user: sanitizeUser(user), ...tokens };
+      // The session keeps its id across rotations, so the new access token
+      // stays bound to the same row an admin can revoke.
+      const accessToken = generateAccessToken(user.id, rotated.id);
+
+      return { user: sanitizeUser(user), accessToken, refreshToken };
     }),
 
   // Revokes the refresh token server-side so it can't be replayed
   logout: protectedProcedure
     .input(z.object({ refreshToken: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      await refreshTokenStore.del(input.refreshToken);
+      await revokeSessionByToken(ctx.db, input.refreshToken);
       await logAction(ctx, { action: "auth.logout" });
       return { success: true };
     }),
@@ -176,17 +216,27 @@ export const authRouter = router({
     }),
 });
 
-const generateTokens = (userId: string) => {
-  const accessToken = jwt.sign({ userId }, process.env.JWT_SECRET!, {
-    expiresIn: "15m",
+/**
+ * The `sid` claim binds an access token to its session row. Without it a
+ * revoked session would keep working until the token expired, since access
+ * tokens are never looked up server-side.
+ */
+const generateAccessToken = (userId: string, sessionId: string) =>
+  jwt.sign({ userId, sid: sessionId }, process.env.JWT_SECRET!, {
+    expiresIn: ACCESS_TOKEN_TTL_SEC,
     algorithm: "HS256",
   });
-  const refreshToken = jwt.sign({ userId }, process.env.JWT_REFRESH_SECRET!, {
+
+const generateRefreshToken = (userId: string) =>
+  jwt.sign({ userId }, process.env.JWT_REFRESH_SECRET!, {
     expiresIn: "7d",
     algorithm: "HS256",
   });
-  return { accessToken, refreshToken };
-};
+
+const generateTokens = (userId: string, sessionId: string) => ({
+  accessToken: generateAccessToken(userId, sessionId),
+  refreshToken: generateRefreshToken(userId),
+});
 
 const sanitizeUser = (user: typeof users.$inferSelect) => {
   const { password, ...rest } = user;

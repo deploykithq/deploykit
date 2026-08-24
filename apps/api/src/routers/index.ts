@@ -4,6 +4,7 @@ import { userRouter } from "./user";
 import { logsRouter } from "./logs";
 import { auditRouter } from "./audit";
 import { serverRouter } from "./server";
+import { sessionRouter } from "./session";
 import { statusRouter } from "./status";
 import { projectRouter } from "./project";
 import { metricsRouter } from "./metrics";
@@ -22,6 +23,7 @@ export const appRouter = router({
   server: serverRouter,
   user: userRouter,
   audit: auditRouter,
+  session: sessionRouter,
   metrics: metricsRouter,
   notification: notificationRouter,
   dashboard: dashboardRouter,

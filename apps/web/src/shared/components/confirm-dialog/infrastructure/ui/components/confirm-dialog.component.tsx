@@ -12,6 +12,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogPropsI> = memo(
     title,
     description,
     confirmText = "Delete",
+    pendingText = "Deleting...",
     variant = "danger",
     isPending,
   }) {
@@ -41,7 +42,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogPropsI> = memo(
               onClick={onConfirm}
               disabled={isPending}
             >
-              {isPending ? "Deleting..." : confirmText}
+              {isPending ? pendingText : confirmText}
             </Button>
           </div>
         </div>
