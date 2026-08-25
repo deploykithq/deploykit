@@ -9,6 +9,7 @@ import {
   sshGetServerInfo,
   sshInstallDocker,
 } from "../services/ssh";
+import { resolveSshOpts } from "../services/ssh-key-resolver";
 import {
   router,
   protectedProcedure,
@@ -16,7 +17,6 @@ import {
   adminProcedure,
 } from "../trpc";
 
-import { encrypt } from "../lib/encryption";
 import { logAction } from "../lib/audit/audit";
 
 import { createServerSchema } from "@deploykit/shared";
@@ -37,8 +37,12 @@ const emptyHealthResult = {
 
 export const serverRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
-    const result = await ctx.db.query.servers.findMany({
+    return ctx.db.query.servers.findMany({
       with: {
+        // Metadata only — the private half never leaves the API.
+        sshKey: {
+          columns: { id: true, name: true, type: true, fingerprint: true },
+        },
         applications: {
           columns: {
             id: true,
@@ -59,10 +63,6 @@ export const serverRouter = router({
       },
       orderBy: (s, { desc }) => [desc(s.createdAt)],
     });
-    return result.map(({ sshKeyContent, ...server }) => ({
-      ...server,
-      hasKey: !!sshKeyContent || !!server.sshKeyPath,
-    }));
   }),
 
   byId: protectedProcedure
@@ -70,23 +70,20 @@ export const serverRouter = router({
     .query(async ({ ctx, input }) => {
       const server = await ctx.db.query.servers.findFirst({
         where: eq(servers.id, input.id),
+        with: {
+          sshKey: {
+            columns: { id: true, name: true, type: true, fingerprint: true },
+          },
+        },
       });
       if (!server) throw new Error("Server not found");
-      const { sshKeyContent, ...rest } = server;
-      return { ...rest, hasKey: !!sshKeyContent || !!server.sshKeyPath };
+      return server;
     }),
 
   create: adminProcedure
     .input(createServerSchema)
     .mutation(async ({ ctx, input }) => {
-      const { sshKeyContent, ...rest } = input;
-      const [server] = await ctx.db
-        .insert(servers)
-        .values({
-          ...rest,
-          sshKeyContent: sshKeyContent ? encrypt(sshKeyContent) : undefined,
-        })
-        .returning();
+      const [server] = await ctx.db.insert(servers).values(input).returning();
       await logAction(ctx, {
         action: "server.create",
         resourceType: "server",
@@ -132,21 +129,14 @@ export const serverRouter = router({
         host: z.string().min(1).max(255).optional(),
         port: z.number().int().min(1).max(65535).optional(),
         username: z.string().max(100).optional(),
-        sshKeyPath: z.string().max(500).optional(),
-        sshKeyContent: z.string().optional(),
+        sshKeyId: z.string().uuid().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const { id, sshKeyContent, ...data } = input;
+      const { id, ...data } = input;
       const [server] = await ctx.db
         .update(servers)
-        .set({
-          ...data,
-          ...(sshKeyContent !== undefined && {
-            sshKeyContent: sshKeyContent ? encrypt(sshKeyContent) : null,
-          }),
-          updatedAt: new Date(),
-        })
+        .set({ ...data, updatedAt: new Date() })
         .where(eq(servers.id, id))
         .returning();
       await logAction(ctx, {
@@ -154,7 +144,7 @@ export const serverRouter = router({
         resourceType: "server",
         resourceId: server!.id,
         resourceName: server!.name,
-        metadata: { ...data, hasNewKey: sshKeyContent !== undefined },
+        metadata: { ...data },
       });
       return server!;
     }),
@@ -184,13 +174,7 @@ export const serverRouter = router({
       if (!server) throw new Error("Server not found");
       if (server.isLocal) return { success: true, message: "Local server" };
 
-      return sshTestConnection({
-        host: server.host,
-        port: server.port,
-        username: server.username,
-        sshKeyPath: server.sshKeyPath,
-        sshKeyContent: server.sshKeyContent,
-      });
+      return sshTestConnection(await resolveSshOpts(server));
     }),
 
   healthCheck: operatorProcedure
@@ -232,13 +216,7 @@ export const serverRouter = router({
       }
 
       // Remote server via SSH
-      const sshOpts = {
-        host: server.host,
-        port: server.port,
-        username: server.username,
-        sshKeyPath: server.sshKeyPath,
-        sshKeyContent: server.sshKeyContent,
-      };
+      const sshOpts = await resolveSshOpts(server);
 
       const dockerCheck = await sshDockerHealthCheck(sshOpts);
 
@@ -304,13 +282,7 @@ export const serverRouter = router({
       if (server.isLocal)
         throw new Error("Cannot install Docker on local server from here");
 
-      const sshOpts = {
-        host: server.host,
-        port: server.port,
-        username: server.username,
-        sshKeyPath: server.sshKeyPath,
-        sshKeyContent: server.sshKeyContent,
-      };
+      const sshOpts = await resolveSshOpts(server);
 
       const result = await sshInstallDocker(sshOpts);
 

@@ -32,6 +32,10 @@ type AuditActionT =
   | "server.create"
   | "server.update"
   | "server.delete"
+  // SSH keys
+  | "ssh_key.create"
+  | "ssh_key.update"
+  | "ssh_key.delete"
   // Users (admin actions)
   | "user.create"
   | "user.update_role"
@@ -51,6 +55,7 @@ type ResourceTypeT =
   | "application"
   | "database"
   | "server"
+  | "ssh_key"
   | "user"
   | "notification_channel";
 

@@ -2,6 +2,7 @@ import {
   LayoutDashboard,
   FolderKanban,
   Server,
+  KeyRound,
   Settings,
   Users,
   Shield,
@@ -14,6 +15,13 @@ const NAV_ITEMS = [
   { to: "/projects", label: "Projects", icon: FolderKanban, exact: false },
   { to: "/templates", label: "Templates", icon: LayoutGrid, exact: true },
   { to: "/servers", label: "Servers", icon: Server, exact: true },
+  {
+    to: "/ssh-keys",
+    label: "SSH Keys",
+    icon: KeyRound,
+    exact: true,
+    adminOnly: true,
+  },
   { to: "/alerts", label: "Alerts", icon: Bell, exact: true },
   { to: "/users", label: "Users", icon: Users, exact: true, adminOnly: true },
   {

@@ -1,5 +1,6 @@
 export * from "./users";
 export * from "./servers";
+export * from "./ssh-keys";
 export * from "./domains";
 export * from "./projects";
 export * from "./databases";

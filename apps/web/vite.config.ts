@@ -15,6 +15,7 @@ export default defineConfig({
       "@settings": path.resolve(__dirname, "./src/features/settings"),
       "@project": path.resolve(__dirname, "./src/features/project"),
       "@server": path.resolve(__dirname, "./src/features/server"),
+      "@ssh-keys": path.resolve(__dirname, "./src/features/ssh-keys"),
       "@users": path.resolve(__dirname, "./src/features/users"),
       "@database": path.resolve(__dirname, "./src/features/database"),
       "@audit": path.resolve(__dirname, "./src/features/audit"),

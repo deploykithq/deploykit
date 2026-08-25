@@ -1,5 +1,3 @@
-type SshKeyMethodT = "paste" | "path";
-
 interface DeleteServerTargetI {
   id: string;
   name: string;
@@ -24,7 +22,6 @@ interface AddServerModalPropsI {
 }
 
 export type {
-  SshKeyMethodT,
   DeleteServerTargetI,
   PruneResultI,
   ImageCleanupPanelPropsI,

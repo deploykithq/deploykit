@@ -4,6 +4,7 @@ import { userRouter } from "./user";
 import { logsRouter } from "./logs";
 import { auditRouter } from "./audit";
 import { serverRouter } from "./server";
+import { sshKeyRouter } from "./ssh-key";
 import { statusRouter } from "./status";
 import { projectRouter } from "./project";
 import { metricsRouter } from "./metrics";
@@ -20,6 +21,7 @@ export const appRouter = router({
   application: applicationRouter,
   database: databaseRouter,
   server: serverRouter,
+  sshKey: sshKeyRouter,
   user: userRouter,
   audit: auditRouter,
   metrics: metricsRouter,

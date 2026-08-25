@@ -136,8 +136,28 @@ export const createServerSchema = z.object({
   host: z.string().min(1).max(255),
   port: z.number().int().min(1).max(65535).default(22),
   username: z.string().max(100).default("root"),
-  sshKeyPath: z.string().max(500).optional(),
-  sshKeyContent: z.string().optional(), // raw private key — will be encrypted on server
+  // Picked from the ssh_keys catalogue — servers no longer carry key material.
+  sshKeyId: z.string().uuid(),
+});
+
+export const sshKeyTypeSchema = z.enum(["rsa", "ed25519"]);
+
+export const generateSshKeySchema = z.object({
+  type: sshKeyTypeSchema,
+  comment: z.string().max(255).optional(),
+});
+
+export const createSshKeySchema = z.object({
+  name: z.string().min(1).max(255),
+  description: z.string().max(500).optional(),
+  // Raw private key (generated or pasted) — encrypted before it is stored.
+  privateKey: z.string().min(1).max(20_000),
+});
+
+export const updateSshKeySchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1).max(255).optional(),
+  description: z.string().max(500).optional(),
 });
 
 export const updateEnvVarsSchema = z.object({

@@ -1,14 +1,15 @@
 import { Client as SSHClient } from "ssh2";
-import { readFileSync } from "fs";
-import { decrypt } from "../lib/encryption";
 import { shellEscape } from "../lib/shell";
 
 export interface SSHConnectionOpts {
   host: string;
   port: number;
   username: string;
-  sshKeyPath?: string | null;
-  sshKeyContent?: string | null;
+  /**
+   * Decrypted private key in a format ssh2 accepts (OpenSSH, or PKCS#1 for RSA).
+   * Resolved from the ssh_keys catalogue by services/ssh-key-resolver.ts.
+   */
+  privateKey: string;
 }
 
 interface SSHExecResult {
@@ -68,7 +69,7 @@ export function sshExec(
       host: opts.host,
       port: opts.port,
       username: opts.username,
-      privateKey: getPrivateKey(opts),
+      privateKey: opts.privateKey,
       readyTimeout: 10_000,
     });
   });
@@ -103,7 +104,7 @@ export function sshTestConnection(
         host: opts.host,
         port: opts.port,
         username: opts.username,
-        privateKey: getPrivateKey(opts),
+        privateKey: opts.privateKey,
         readyTimeout: 10_000,
       });
     } catch (err: any) {
@@ -288,19 +289,3 @@ export async function sshInstallDocker(
     return { success: false, error: err.message };
   }
 }
-
-const getPrivateKey = (opts: SSHConnectionOpts): string | Buffer => {
-  if (opts.sshKeyContent) {
-    try {
-      return decrypt(opts.sshKeyContent);
-    } catch {
-      return opts.sshKeyContent;
-    }
-  }
-
-  if (opts.sshKeyPath) {
-    return readFileSync(opts.sshKeyPath);
-  }
-
-  throw new Error("No SSH key provided — set either key content or key path");
-};

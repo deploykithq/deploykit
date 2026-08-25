@@ -1,10 +1,11 @@
 import { memo } from "react";
-import { Key } from "lucide-react";
+import { KeyRound } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 
 import { Button } from "@shared/components/button";
 import { Input } from "@shared/components/input";
 import { Modal } from "@shared/components/modal";
-import { Textarea } from "@shared/components/textarea";
+import { Select } from "@shared/components/select";
 
 import { useAddServerForm } from "@server/infrastructure/ui/hooks/useAddServerForm";
 
@@ -21,12 +22,10 @@ export const AddServerModal: React.FC<AddServerModalPropsI> = memo(
       setPort,
       username,
       setUsername,
-      keyMethod,
-      setKeyMethod,
-      sshKeyContent,
-      setSshKeyContent,
-      sshKeyPath,
-      setSshKeyPath,
+      sshKeyId,
+      setSshKeyId,
+      sshKeys,
+      loadingKeys,
       creating,
       error,
       handleSubmit,
@@ -67,68 +66,36 @@ export const AddServerModal: React.FC<AddServerModalPropsI> = memo(
             placeholder="root"
           />
 
-          {/* SSH Key Method */}
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-text-secondary">
-              SSH Private Key
-            </label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setKeyMethod("paste")}
-                className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                  keyMethod === "paste"
-                    ? "bg-accent text-white"
-                    : "bg-surface-2 text-text-secondary border border-border hover:bg-surface-3"
-                }`}
-              >
-                Paste Key
-              </button>
-              <button
-                type="button"
-                onClick={() => setKeyMethod("path")}
-                className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                  keyMethod === "path"
-                    ? "bg-accent text-white"
-                    : "bg-surface-2 text-text-secondary border border-border hover:bg-surface-3"
-                }`}
-              >
-                Server Path
-              </button>
-            </div>
-
-            {keyMethod === "paste" ? (
-              <Textarea
-                value={sshKeyContent}
-                onChange={(e) => setSshKeyContent(e.target.value)}
-                placeholder={
-                  "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"
-                }
-                rows={5}
-                className="font-mono text-xs"
-              />
-            ) : (
-              <Input
-                value={sshKeyPath}
-                onChange={(e) => setSshKeyPath(e.target.value)}
-                placeholder="/root/.ssh/id_rsa"
-              />
-            )}
-          </div>
-
-          <div className="flex items-start gap-2 p-3 rounded-lg bg-surface-2 border border-border">
-            <Key className="w-4 h-4 text-text-muted mt-0.5 shrink-0" />
-            <div className="text-xs text-text-muted space-y-1">
-              <p>
-                <strong>Paste Key:</strong> Paste your private key content. It
-                will be encrypted in the database.
-              </p>
-              <p>
-                <strong>Server Path:</strong> Path to the key on the DeployKit
-                host (e.g. <code>~/.ssh/id_rsa</code>).
+          {/* SSH key, picked from the catalogue */}
+          {loadingKeys ? (
+            <p className="text-xs text-text-muted">Loading SSH keys...</p>
+          ) : !sshKeys?.length ? (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-surface-2 border border-border">
+              <KeyRound className="w-4 h-4 text-text-muted mt-0.5 shrink-0" />
+              <p className="text-xs text-text-muted">
+                No SSH keys yet. Create one on the{" "}
+                <Link to="/ssh-keys" className="text-accent hover:underline">
+                  SSH Keys
+                </Link>{" "}
+                page, add its public half to this server&apos;s{" "}
+                <code>~/.ssh/authorized_keys</code>, then come back.
               </p>
             </div>
-          </div>
+          ) : (
+            <Select
+              label="SSH Key"
+              value={sshKeyId}
+              onChange={(e) => setSshKeyId(e.target.value)}
+              options={[
+                { value: "", label: "Select a key..." },
+                ...sshKeys.map((key) => ({
+                  value: key.id,
+                  label: `${key.name} (${key.type})`,
+                })),
+              ]}
+              required
+            />
+          )}
 
           {error && <p className="text-xs text-danger">{error.message}</p>}
 
@@ -136,7 +103,7 @@ export const AddServerModal: React.FC<AddServerModalPropsI> = memo(
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={creating}>
+            <Button type="submit" disabled={creating || !sshKeyId}>
               {creating ? "Adding..." : "Add Server"}
             </Button>
           </div>
