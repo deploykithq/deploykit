@@ -22,6 +22,11 @@ const ServersPage = lazy(() =>
     default: m.ServersPage,
   })),
 );
+const SshKeysPage = lazy(() =>
+  import("@ssh-keys/infrastructure/ui/pages/SshKeys").then((m) => ({
+    default: m.SshKeysPage,
+  })),
+);
 const UsersPage = lazy(() =>
   import("@users/infrastructure/ui/pages/Users").then((m) => ({
     default: m.UsersPage,
@@ -135,6 +140,12 @@ export const serversRoute = createRoute({
   component: withSuspense(ServersPage),
 });
 
+export const sshKeysRoute = createRoute({
+  getParentRoute: () => authLayoutRoute,
+  path: "/ssh-keys",
+  component: withSuspense(SshKeysPage),
+});
+
 export const usersRoute = createRoute({
   getParentRoute: () => authLayoutRoute,
   path: "/users",
@@ -193,6 +204,7 @@ const routeTree = rootRoute.addChildren([
     appDetailRoute,
     dbDetailRoute,
     serversRoute,
+    sshKeysRoute,
     usersRoute,
     settingsRoute,
     auditLogRoute,

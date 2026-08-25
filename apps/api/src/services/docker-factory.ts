@@ -3,7 +3,7 @@ import { db } from "../db/index";
 import { servers } from "../db/schema/index";
 import { DockerService } from "./docker";
 import { RemoteDockerService } from "./remote-docker";
-import { decrypt } from "../lib/encryption";
+import { resolveSshOpts } from "./ssh-key-resolver";
 
 // Shared local instance
 const localDocker = new DockerService();
@@ -95,23 +95,7 @@ const getDockerForServer = async (
     return { docker: localDocker, isRemote: false };
   }
 
-  // Build SSH opts
-  let sshKeyContent = server.sshKeyContent;
-  if (sshKeyContent) {
-    try {
-      sshKeyContent = decrypt(sshKeyContent);
-    } catch {
-      // might not be encrypted
-    }
-  }
-
-  const remote = new RemoteDockerService({
-    host: server.host,
-    port: server.port,
-    username: server.username,
-    sshKeyPath: server.sshKeyPath,
-    sshKeyContent,
-  });
+  const remote = new RemoteDockerService(await resolveSshOpts(server));
 
   return { docker: remote, isRemote: true };
 };

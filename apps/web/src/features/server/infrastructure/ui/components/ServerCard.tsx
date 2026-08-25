@@ -79,9 +79,18 @@ export const ServerCard: React.FC<ServerCardPropsI> = memo(function ServerCard({
                 </span>
               )}
               <StatusBadge status={server.status} />
-              {server.hasKey && !server.isLocal && (
-                <Key className="w-3 h-3 text-text-muted" />
-              )}
+              {!server.isLocal &&
+                (server.sshKey ? (
+                  <span className="flex items-center gap-1 text-xs text-text-muted">
+                    <Key className="w-3 h-3" />
+                    {server.sshKey.name}
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-xs text-warning">
+                    <Key className="w-3 h-3" />
+                    No SSH key
+                  </span>
+                ))}
             </div>
             <div className="flex items-center gap-3 mt-0.5 text-xs text-text-muted">
               <span className="font-mono">

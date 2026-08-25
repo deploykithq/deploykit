@@ -13,6 +13,7 @@
       "@auth/*": ["./src/features/auth/*"],
       "@project/*": ["./src/features/project/*"],
       "@server/*": ["./src/features/server/*"],
+      "@ssh-keys/*": ["./src/features/ssh-keys/*"],
       "@settings/*": ["./src/features/settings/*"],
       "@users/*": ["./src/features/users/*"],
       "@database/*": ["./src/features/database/*"],

@@ -4,12 +4,12 @@ import {
   varchar,
   integer,
   boolean,
-  text,
   timestamp,
   bigint,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
+import { sshKeys } from "./ssh-keys";
 import { databases } from "./databases";
 import { applications } from "./applications";
 
@@ -19,8 +19,9 @@ const servers = pgTable("servers", {
   host: varchar("host", { length: 255 }).notNull(),
   port: integer("port").default(22).notNull(),
   username: varchar("username", { length: 100 }).default("root").notNull(),
-  sshKeyPath: varchar("ssh_key_path", { length: 500 }),
-  sshKeyContent: text("ssh_key_content"), // encrypted private key (alternative to path)
+  sshKeyId: uuid("ssh_key_id").references(() => sshKeys.id, {
+    onDelete: "restrict",
+  }),
   isLocal: boolean("is_local").default(false).notNull(),
   // Status
   status: varchar("status", { length: 20 }).default("disconnected").notNull(),
@@ -35,9 +36,13 @@ const servers = pgTable("servers", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-const serverRelations = relations(servers, ({ many }) => ({
+const serverRelations = relations(servers, ({ one, many }) => ({
   applications: many(applications),
   databases: many(databases),
+  sshKey: one(sshKeys, {
+    fields: [servers.sshKeyId],
+    references: [sshKeys.id],
+  }),
 }));
 
 type ServerT = typeof servers.$inferSelect;
