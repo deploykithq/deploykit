@@ -1,4 +1,4 @@
-type LogServiceTypeT = "application" | "database";
+type LogServiceTypeT = "application" | "database" | "compose";
 
 type LogLevelT = "error" | "warn" | "info" | "debug" | "fatal";
 

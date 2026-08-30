@@ -21,6 +21,7 @@ export default defineConfig({
       "@audit": path.resolve(__dirname, "./src/features/audit"),
       "@metrics": path.resolve(__dirname, "./src/features/metrics"),
       "@application": path.resolve(__dirname, "./src/features/application"),
+      "@compose": path.resolve(__dirname, "./src/features/compose"),
       "@dashboard": path.resolve(__dirname, "./src/features/dashboard"),
       "@templates": path.resolve(__dirname, "./src/features/templates"),
       "@status": path.resolve(__dirname, "./src/features/status"),

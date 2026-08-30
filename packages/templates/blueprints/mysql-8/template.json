@@ -1,0 +1,29 @@
+{
+  "id": "mysql-8",
+  "name": "MySQL 8",
+  "version": "8",
+  "description": "MySQL 8 relational database with generated passwords. Reachable on the server's public IP at the published port. For a database wired into DeployKit's backups and connection strings, use “Add Database” instead.",
+  "links": {
+    "website": "https://www.mysql.com",
+    "docs": "https://dev.mysql.com/doc/"
+  },
+  "tags": [
+    "sql",
+    "relational",
+    "database"
+  ],
+  "variables": {
+    "root_password": "${password:24}",
+    "db_password": "${password:24}",
+    "db_port": "${randomPort}"
+  },
+  "domains": [],
+  "env": {
+    "MYSQL_ROOT_PASSWORD": "${root_password}",
+    "MYSQL_DATABASE": "app",
+    "MYSQL_USER": "deploykit",
+    "MYSQL_PASSWORD": "${db_password}",
+    "DB_PORT": "${db_port}"
+  },
+  "mounts": []
+}

@@ -1,0 +1,17 @@
+services:
+  code-server:
+    image: linuxserver/code-server:latest
+    restart: unless-stopped
+    expose:
+      - "8443"
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: Etc/UTC
+      PASSWORD: ${ACCESS_PASSWORD}
+      SUDO_PASSWORD: ${SUDO_PASSWORD}
+    volumes:
+      - code-config:/config
+
+volumes:
+  code-config:

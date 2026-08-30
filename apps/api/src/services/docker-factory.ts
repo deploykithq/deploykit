@@ -4,6 +4,11 @@ import { servers } from "../db/schema/index";
 import { DockerService } from "./docker";
 import { RemoteDockerService } from "./remote-docker";
 import { resolveSshOpts } from "./ssh-key-resolver";
+import {
+  localComposeRunner,
+  RemoteComposeRunner,
+  type ComposeRunnerI,
+} from "./compose-runner";
 
 // Shared local instance
 const localDocker = new DockerService();
@@ -114,4 +119,30 @@ const getRemoteDocker = async (
   return docker as RemoteDockerService;
 };
 
-export { getDockerForServer, getRemoteDocker };
+/**
+ * The `docker compose` runner for a server.
+ *
+ * Same local/remote split as `getDockerForServer`, kept beside it so both
+ * resolve a server the same way — a stack and an application deployed to the
+ * same server must agree on which host they mean.
+ */
+const getComposeRunnerForServer = async (
+  serverId?: string | null,
+): Promise<{ runner: ComposeRunnerI; isRemote: boolean }> => {
+  if (!serverId) return { runner: localComposeRunner, isRemote: false };
+
+  const server = await db.query.servers.findFirst({
+    where: eq(servers.id, serverId),
+  });
+
+  if (!server || server.isLocal) {
+    return { runner: localComposeRunner, isRemote: false };
+  }
+
+  return {
+    runner: new RemoteComposeRunner(await resolveSshOpts(server)),
+    isRemote: true,
+  };
+};
+
+export { getDockerForServer, getRemoteDocker, getComposeRunnerForServer };

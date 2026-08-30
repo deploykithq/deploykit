@@ -18,7 +18,12 @@ import { redactSecrets } from "../lib/redact";
 
 interface StreamMeta {
   serviceId: string;
-  serviceType: "application" | "database";
+  /**
+   * For a Compose stack the id is the stack's, not a container's: every
+   * container in the stack persists its lines under the same serviceId, which
+   * is what makes the stack's Logs tab a single stream.
+   */
+  serviceType: "application" | "database" | "compose";
 }
 
 // Track active log streams so we can clean them up.

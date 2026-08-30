@@ -1,21 +1,66 @@
 import { useMemo, useState } from "react";
-import type { Template } from "@deploykit/shared";
 
 import { trpc } from "@lib/trpc";
 
-export const useTemplates = () => {
-  const { data: templates, isLoading } = trpc.template.list.useQuery();
-  const [selected, setSelected] = useState<Template | null>(null);
+import type { CatalogEntryT } from "@templates/infrastructure/ui/interfaces/templates.interfaces";
 
-  const grouped = useMemo(() => {
-    const map = new Map<string, Template[]>();
-    for (const t of templates ?? []) {
-      const list = map.get(t.category) ?? [];
-      list.push(t);
-      map.set(t.category, list);
+/**
+ * El catálogo, con buscador y filtro por etiqueta.
+ *
+ * Filtra en cliente a propósito: el catálogo entero son unos pocos cientos de
+ * entradas de texto que ya vienen en una sola petición, así que un ida y vuelta
+ * al servidor por pulsación solo añadiría latencia.
+ */
+export const useTemplates = () => {
+  const { data, isLoading } = trpc.template.list.useQuery();
+
+  const [selected, setSelected] = useState<CatalogEntryT | null>(null);
+  const [query, setQuery] = useState("");
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+
+  const templates = useMemo<CatalogEntryT[]>(
+    () => data?.templates ?? [],
+    [data],
+  );
+
+  const tags = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const t of templates) {
+      for (const tag of t.tags ?? []) {
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
     }
-    return map;
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([tag, count]) => ({ tag, count }));
   }, [templates]);
 
-  return { isLoading, grouped, selected, setSelected };
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return templates.filter((t) => {
+      if (activeTag && !(t.tags ?? []).includes(activeTag)) return false;
+      if (!needle) return true;
+      return (
+        t.name.toLowerCase().includes(needle) ||
+        t.id.toLowerCase().includes(needle) ||
+        t.description.toLowerCase().includes(needle) ||
+        (t.tags ?? []).some((tag) => tag.toLowerCase().includes(needle))
+      );
+    });
+  }, [templates, query, activeTag]);
+
+  return {
+    isLoading,
+    templates,
+    filtered,
+    tags,
+    query,
+    setQuery,
+    activeTag,
+    setActiveTag,
+    selected,
+    setSelected,
+    /** "bundled" avisa de que el registro remoto no está accesible. */
+    source: data?.source ?? "remote",
+  };
 };

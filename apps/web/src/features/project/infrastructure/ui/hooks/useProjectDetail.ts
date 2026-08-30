@@ -15,11 +15,19 @@ export const useProjectDetail = () => {
 
   const onBack = () => navigate({ to: "/" });
 
-  const onOpenService = (type: "application" | "database", id: string) => {
+  const onOpenService = (
+    type: "application" | "database" | "compose",
+    id: string,
+  ) => {
     if (type === "application") {
       navigate({
         to: "/projects/$projectId/apps/$appId",
         params: { projectId, appId: id },
+      });
+    } else if (type === "compose") {
+      navigate({
+        to: "/projects/$projectId/compose/$composeId",
+        params: { projectId, composeId: id },
       });
     } else {
       navigate({
@@ -31,6 +39,7 @@ export const useProjectDetail = () => {
 
   const [showNewApp, setShowNewApp] = useState(false);
   const [showNewDb, setShowNewDb] = useState(false);
+  const [showNewCompose, setShowNewCompose] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const canWrite = useAuthStore((s) => s.canWrite)();
@@ -41,6 +50,10 @@ export const useProjectDetail = () => {
   });
 
   const project = rawProject as ProjectI | undefined;
+
+  // Los stacks no cuelgan de `project.byId` (viven en su propio router), así
+  // que se piden aparte y se listan junto a aplicaciones y bases de datos.
+  const { data: composeStacks } = trpc.compose.list.useQuery({ projectId });
 
   const deleteMutation = trpc.project.delete.useMutation({
     onSuccess: () => {
@@ -71,6 +84,9 @@ export const useProjectDetail = () => {
     setShowNewApp,
     showNewDb,
     setShowNewDb,
+    showNewCompose,
+    setShowNewCompose,
+    composeStacks: composeStacks ?? [],
     showDeleteConfirm,
     setShowDeleteConfirm,
     deleting: deleteMutation.isPending,

@@ -1,0 +1,11 @@
+services:
+  memos:
+    image: neosmemo/memos:stable
+    restart: unless-stopped
+    expose:
+      - "5230"
+    volumes:
+      - memos-data:/var/opt/memos
+
+volumes:
+  memos-data:

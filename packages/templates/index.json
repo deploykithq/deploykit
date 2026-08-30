@@ -1,0 +1,268 @@
+[
+  {
+    "id": "code-server",
+    "name": "code-server",
+    "version": "latest",
+    "description": "VS Code in the browser. Sign in with the generated access password.",
+    "links": {
+      "github": "https://github.com/coder/code-server",
+      "docs": "https://coder.com/docs/code-server/latest"
+    },
+    "tags": [
+      "ide",
+      "dev"
+    ]
+  },
+  {
+    "id": "gitea",
+    "name": "Gitea",
+    "version": "1",
+    "description": "Self-hosted Git service with issues and pull requests. Complete the setup wizard on first visit.",
+    "links": {
+      "github": "https://github.com/go-gitea/gitea",
+      "website": "https://about.gitea.com",
+      "docs": "https://docs.gitea.com"
+    },
+    "tags": [
+      "git",
+      "vcs"
+    ]
+  },
+  {
+    "id": "gotify",
+    "name": "Gotify",
+    "version": "latest",
+    "description": "Simple server for sending and receiving push notifications. Log in as admin with the generated password.",
+    "links": {
+      "github": "https://github.com/gotify/server",
+      "website": "https://gotify.net",
+      "docs": "https://gotify.net/docs/"
+    },
+    "tags": [
+      "notifications"
+    ]
+  },
+  {
+    "id": "grafana",
+    "name": "Grafana",
+    "version": "latest",
+    "description": "Observability dashboards and data visualization. Log in as admin with the generated password.",
+    "links": {
+      "github": "https://github.com/grafana/grafana",
+      "website": "https://grafana.com",
+      "docs": "https://grafana.com/docs/grafana/latest/"
+    },
+    "tags": [
+      "monitoring",
+      "dashboards"
+    ]
+  },
+  {
+    "id": "mailpit",
+    "name": "Mailpit",
+    "version": "latest",
+    "description": "Email and SMTP testing tool. The web UI is on your domain; other services send mail to it on the published SMTP port.",
+    "links": {
+      "github": "https://github.com/axllent/mailpit",
+      "docs": "https://mailpit.axllent.org/docs/"
+    },
+    "tags": [
+      "email",
+      "smtp",
+      "dev"
+    ]
+  },
+  {
+    "id": "mariadb-11",
+    "name": "MariaDB 11",
+    "version": "11",
+    "description": "MariaDB 11, MySQL-compatible, with generated passwords. Reachable on the server's public IP at the published port. For a database wired into DeployKit's backups and connection strings, use “Add Database” instead.",
+    "links": {
+      "website": "https://mariadb.org",
+      "docs": "https://mariadb.com/kb/en/documentation/"
+    },
+    "tags": [
+      "sql",
+      "relational",
+      "database"
+    ]
+  },
+  {
+    "id": "memos",
+    "name": "Memos",
+    "version": "stable",
+    "description": "Lightweight, privacy-first note-taking and memo hub. SQLite-backed, no setup.",
+    "links": {
+      "github": "https://github.com/usememos/memos",
+      "website": "https://www.usememos.com",
+      "docs": "https://www.usememos.com/docs"
+    },
+    "tags": [
+      "notes",
+      "markdown"
+    ]
+  },
+  {
+    "id": "metabase",
+    "name": "Metabase",
+    "version": "latest",
+    "description": "Open-source business intelligence and dashboards. Uses its embedded H2 database — fine to evaluate with, not for production data.",
+    "links": {
+      "github": "https://github.com/metabase/metabase",
+      "website": "https://www.metabase.com",
+      "docs": "https://www.metabase.com/docs/latest/"
+    },
+    "tags": [
+      "analytics",
+      "bi"
+    ]
+  },
+  {
+    "id": "miniflux-postgres",
+    "name": "Miniflux",
+    "version": "latest",
+    "description": "Minimalist, fast RSS reader wired to its own PostgreSQL 16. Log in as admin with the generated password.",
+    "links": {
+      "github": "https://github.com/miniflux/v2",
+      "website": "https://miniflux.app",
+      "docs": "https://miniflux.app/docs/"
+    },
+    "tags": [
+      "rss",
+      "postgres"
+    ]
+  },
+  {
+    "id": "mongodb-7",
+    "name": "MongoDB 7",
+    "version": "7",
+    "description": "MongoDB 7 document database with a generated root password. Reachable on the server's public IP at the published port. For a database wired into DeployKit's backups and connection strings, use “Add Database” instead.",
+    "links": {
+      "website": "https://www.mongodb.com",
+      "docs": "https://www.mongodb.com/docs/"
+    },
+    "tags": [
+      "nosql",
+      "document",
+      "database"
+    ]
+  },
+  {
+    "id": "mysql-8",
+    "name": "MySQL 8",
+    "version": "8",
+    "description": "MySQL 8 relational database with generated passwords. Reachable on the server's public IP at the published port. For a database wired into DeployKit's backups and connection strings, use “Add Database” instead.",
+    "links": {
+      "website": "https://www.mysql.com",
+      "docs": "https://dev.mysql.com/doc/"
+    },
+    "tags": [
+      "sql",
+      "relational",
+      "database"
+    ]
+  },
+  {
+    "id": "n8n",
+    "name": "n8n",
+    "version": "1.70.0",
+    "description": "Workflow automation with a visual editor and 400+ integrations. Create the owner account on first visit.",
+    "links": {
+      "github": "https://github.com/n8n-io/n8n",
+      "website": "https://n8n.io",
+      "docs": "https://docs.n8n.io"
+    },
+    "tags": [
+      "automation",
+      "no-code"
+    ]
+  },
+  {
+    "id": "pgadmin",
+    "name": "pgAdmin 4",
+    "version": "latest",
+    "description": "Web UI to manage PostgreSQL databases. Log in with the generated email and password.",
+    "links": {
+      "website": "https://www.pgadmin.org",
+      "docs": "https://www.pgadmin.org/docs/"
+    },
+    "tags": [
+      "postgres",
+      "admin",
+      "database"
+    ]
+  },
+  {
+    "id": "postgres-16",
+    "name": "PostgreSQL 16",
+    "version": "16-alpine",
+    "description": "PostgreSQL 16 with a generated password. Reachable on the server's public IP at the published port. For a database wired into DeployKit's backups and connection strings, use “Add Database” instead.",
+    "links": {
+      "website": "https://www.postgresql.org",
+      "docs": "https://www.postgresql.org/docs/16/"
+    },
+    "tags": [
+      "sql",
+      "relational",
+      "database"
+    ]
+  },
+  {
+    "id": "redis-7",
+    "name": "Redis 7",
+    "version": "7-alpine",
+    "description": "Redis 7 in-memory store for caching and queues, password-protected. Reachable on the server's public IP at the published port. For a database wired into DeployKit's backups and connection strings, use “Add Database” instead.",
+    "links": {
+      "website": "https://redis.io",
+      "docs": "https://redis.io/docs/"
+    },
+    "tags": [
+      "cache",
+      "kv",
+      "database"
+    ]
+  },
+  {
+    "id": "umami-postgres",
+    "name": "Umami",
+    "version": "postgresql-latest",
+    "description": "Privacy-friendly web analytics, wired to its own PostgreSQL 16. Default login: admin / umami — change it after first login.",
+    "links": {
+      "github": "https://github.com/umami-software/umami",
+      "website": "https://umami.is",
+      "docs": "https://umami.is/docs"
+    },
+    "tags": [
+      "analytics",
+      "postgres"
+    ]
+  },
+  {
+    "id": "uptime-kuma",
+    "name": "Uptime Kuma",
+    "version": "1",
+    "description": "Self-hosted uptime monitoring with status pages and alerts. Create the admin account on first visit.",
+    "links": {
+      "github": "https://github.com/louislam/uptime-kuma",
+      "docs": "https://github.com/louislam/uptime-kuma/wiki"
+    },
+    "tags": [
+      "monitoring",
+      "status"
+    ]
+  },
+  {
+    "id": "vaultwarden",
+    "name": "Vaultwarden",
+    "version": "latest",
+    "description": "Lightweight self-hosted password manager, Bitwarden-compatible. The generated admin token unlocks /admin.",
+    "links": {
+      "github": "https://github.com/dani-garcia/vaultwarden",
+      "docs": "https://github.com/dani-garcia/vaultwarden/wiki"
+    },
+    "tags": [
+      "passwords",
+      "security"
+    ]
+  }
+]

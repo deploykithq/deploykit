@@ -1,0 +1,29 @@
+{
+  "id": "mariadb-11",
+  "name": "MariaDB 11",
+  "version": "11",
+  "description": "MariaDB 11, MySQL-compatible, with generated passwords. Reachable on the server's public IP at the published port. For a database wired into DeployKit's backups and connection strings, use “Add Database” instead.",
+  "links": {
+    "website": "https://mariadb.org",
+    "docs": "https://mariadb.com/kb/en/documentation/"
+  },
+  "tags": [
+    "sql",
+    "relational",
+    "database"
+  ],
+  "variables": {
+    "root_password": "${password:24}",
+    "db_password": "${password:24}",
+    "db_port": "${randomPort}"
+  },
+  "domains": [],
+  "env": {
+    "MARIADB_ROOT_PASSWORD": "${root_password}",
+    "MARIADB_DATABASE": "app",
+    "MARIADB_USER": "deploykit",
+    "MARIADB_PASSWORD": "${db_password}",
+    "DB_PORT": "${db_port}"
+  },
+  "mounts": []
+}

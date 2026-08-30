@@ -1,7 +1,16 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db/index";
-import { applications, databases, metricSamples } from "../db/schema/index";
-import { drainPending, type MetricSample } from "../services/metrics";
+import {
+  applications,
+  databases,
+  composeServices,
+  metricSamples,
+} from "../db/schema/index";
+import {
+  drainPending,
+  type MetricSample,
+  type ServiceTypeT,
+} from "../services/metrics";
 import { redis } from "../lib/redis";
 
 /**
@@ -84,7 +93,7 @@ function aggregateByMinute(samples: MetricSample[]): Aggregate[] {
 
 async function rollupService(
   serviceId: string,
-  serviceType: "application" | "database",
+  serviceType: ServiceTypeT,
 ): Promise<void> {
   const samples = await drainPending(serviceId);
   if (samples.length === 0) return;
@@ -166,7 +175,7 @@ async function compactAndPrune(): Promise<void> {
 
 async function tick(): Promise<void> {
   try {
-    const [apps, dbs] = await Promise.all([
+    const [apps, dbs, stacks] = await Promise.all([
       db.query.applications.findMany({
         where: eq(applications.status, "running"),
         columns: { id: true },
@@ -175,11 +184,18 @@ async function tick(): Promise<void> {
         where: eq(databases.status, "running"),
         columns: { id: true },
       }),
+      db.query.composeServices.findMany({
+        where: eq(composeServices.status, "running"),
+        columns: { id: true },
+      }),
     ]);
 
     const tasks: Promise<void>[] = [
       ...apps.map((a) => rollupService(a.id, "application")),
       ...dbs.map((d) => rollupService(d.id, "database")),
+      // Without this a stack's samples pile up in Redis and its long-term
+      // history stays empty — the buffer is only ever drained here.
+      ...stacks.map((s) => rollupService(s.id, "compose")),
     ];
     await Promise.allSettled(tasks);
 

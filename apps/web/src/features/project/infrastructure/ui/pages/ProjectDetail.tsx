@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { ArrowLeft, Box, Database, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Box, Database, Layers, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@shared/components/button";
 import { Card } from "@shared/components/card";
@@ -16,6 +16,11 @@ import {
   StatusPageSection,
 } from "@project/infrastructure/ui/components";
 
+import {
+  ComposeCard,
+  NewComposeModal,
+} from "@compose/infrastructure/ui/components";
+
 import { useProjectDetail } from "@project/infrastructure/ui/hooks/useProjectDetail";
 
 export const ProjectDetailPage: React.FC = memo(function ProjectDetailPage() {
@@ -31,6 +36,9 @@ export const ProjectDetailPage: React.FC = memo(function ProjectDetailPage() {
     setShowNewApp,
     showNewDb,
     setShowNewDb,
+    showNewCompose,
+    setShowNewCompose,
+    composeStacks,
     showDeleteConfirm,
     setShowDeleteConfirm,
     deleting,
@@ -71,6 +79,16 @@ export const ProjectDetailPage: React.FC = memo(function ProjectDetailPage() {
             >
               <Trash2 className="w-3.5 h-3.5" />
               Delete
+            </Button>
+          )}
+          {canWrite && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowNewCompose(true)}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              Add Stack
             </Button>
           )}
           {canWrite && (
@@ -126,6 +144,40 @@ export const ProjectDetailPage: React.FC = memo(function ProjectDetailPage() {
         )}
       </section>
 
+      {/* Compose stacks */}
+      <section>
+        <h2 className="text-xs font-medium text-text-muted uppercase tracking-wider mb-3">
+          Stacks
+        </h2>
+        {!composeStacks.length ? (
+          <Card>
+            <EmptyState
+              icon={<Layers className="w-6 h-6" />}
+              title="No stacks"
+              description="Deploy a multi-service stack from a template, or paste your own docker-compose.yml."
+              action={
+                canWrite ? (
+                  <Button size="sm" onClick={() => setShowNewCompose(true)}>
+                    <Plus className="w-3.5 h-3.5" />
+                    Add Stack
+                  </Button>
+                ) : undefined
+              }
+            />
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 gap-3">
+            {composeStacks.map((stack: any) => (
+              <ComposeCard
+                key={stack.id}
+                stack={stack}
+                onClick={() => onOpenService("compose", stack.id)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
       {/* Databases */}
       <section>
         <h2 className="text-xs font-medium text-text-muted uppercase tracking-wider mb-3">
@@ -175,6 +227,12 @@ export const ProjectDetailPage: React.FC = memo(function ProjectDetailPage() {
         onClose={() => setShowNewApp(false)}
         projectId={projectId}
         onCreated={handleAppCreated}
+      />
+
+      <NewComposeModal
+        open={showNewCompose}
+        onClose={() => setShowNewCompose(false)}
+        projectId={projectId}
       />
 
       <NewDatabaseModal

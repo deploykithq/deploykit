@@ -67,6 +67,11 @@ const ApplicationDetailPage = lazy(() =>
     (m) => ({ default: m.ApplicationDetailPage }),
   ),
 );
+const ComposeDetailPage = lazy(() =>
+  import("@compose/infrastructure/ui/pages/ComposeDetailPage").then((m) => ({
+    default: m.ComposeDetailPage,
+  })),
+);
 const StatusPage = lazy(() =>
   import("@status/infrastructure/ui/pages/StatusPage").then((m) => ({
     default: m.StatusPage,
@@ -188,6 +193,12 @@ export const appDetailRoute = createRoute({
   component: withSuspense(ApplicationDetailPage),
 });
 
+export const composeDetailRoute = createRoute({
+  getParentRoute: () => authLayoutRoute,
+  path: "/projects/$projectId/compose/$composeId",
+  component: withSuspense(ComposeDetailPage),
+});
+
 export const dbDetailRoute = createRoute({
   getParentRoute: () => authLayoutRoute,
   path: "/projects/$projectId/db/$dbId",
@@ -202,6 +213,7 @@ const routeTree = rootRoute.addChildren([
     projectsIndexRoute,
     projectDetailRoute,
     appDetailRoute,
+    composeDetailRoute,
     dbDetailRoute,
     serversRoute,
     sshKeysRoute,

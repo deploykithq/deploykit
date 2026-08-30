@@ -1,0 +1,30 @@
+{
+  "id": "gotify",
+  "name": "Gotify",
+  "version": "latest",
+  "description": "Simple server for sending and receiving push notifications. Log in as admin with the generated password.",
+  "links": {
+    "github": "https://github.com/gotify/server",
+    "website": "https://gotify.net",
+    "docs": "https://gotify.net/docs/"
+  },
+  "tags": [
+    "notifications"
+  ],
+  "variables": {
+    "main_domain": "${domain}",
+    "admin_password": "${password:20}"
+  },
+  "domains": [
+    {
+      "service": "gotify",
+      "port": 80,
+      "host": "${main_domain}"
+    }
+  ],
+  "env": {
+    "MAIN_DOMAIN": "${main_domain}",
+    "GOTIFY_ADMIN_PASSWORD": "${admin_password}"
+  },
+  "mounts": []
+}

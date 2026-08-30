@@ -16,6 +16,7 @@ import { createContext } from "./trpc";
 import { isDockerAvailable, ensureNetwork } from "./lib/docker";
 import { initSocket } from "./lib/socket";
 import { startDeployWorker } from "./workers/deploy.worker";
+import { startComposeDeployWorker } from "./workers/compose-deploy.worker";
 import { startBackupWorker } from "./workers/backup.worker";
 import { startBackupScheduler } from "./workers/backup.scheduler";
 import { startMetricsScheduler } from "./workers/metrics.scheduler";
@@ -30,7 +31,7 @@ import { WebhookService } from "./services/webhook";
 import { prewarmTrivyDb, scanConfig } from "./services/trivy-scanner";
 import { ensureLogStream, stopLogStream, isCollected } from "./services/logs";
 import { isRateLimited } from "./lib/redis";
-import { checkEnv } from "./lib/env-check";
+import { checkEnv, checkComposeSupport } from "./lib/env-check";
 
 const PORT = parseInt(process.env.API_PORT || "3001", 10);
 const webhookService = new WebhookService();
@@ -260,7 +261,12 @@ async function main() {
   });
 
   // Start workers
+  // Advisory: a missing Compose plugin must not stop the API from serving
+  // applications and databases, so this warns rather than throws.
+  checkComposeSupport().catch(() => {});
+
   startDeployWorker();
+  startComposeDeployWorker();
   startBackupWorker();
   startBackupScheduler();
   startMetricsScheduler();

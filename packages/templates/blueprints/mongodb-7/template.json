@@ -1,0 +1,26 @@
+{
+  "id": "mongodb-7",
+  "name": "MongoDB 7",
+  "version": "7",
+  "description": "MongoDB 7 document database with a generated root password. Reachable on the server's public IP at the published port. For a database wired into DeployKit's backups and connection strings, use “Add Database” instead.",
+  "links": {
+    "website": "https://www.mongodb.com",
+    "docs": "https://www.mongodb.com/docs/"
+  },
+  "tags": [
+    "nosql",
+    "document",
+    "database"
+  ],
+  "variables": {
+    "root_password": "${password:24}",
+    "db_port": "${randomPort}"
+  },
+  "domains": [],
+  "env": {
+    "MONGO_USER": "deploykit",
+    "MONGO_PASSWORD": "${root_password}",
+    "DB_PORT": "${db_port}"
+  },
+  "mounts": []
+}

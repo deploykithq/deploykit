@@ -19,6 +19,17 @@ const deployQueue = new Queue("deploy", {
   },
 });
 
+// Stacks get their own queue: a Compose deploy is pull + up, with no image
+// build, so it must not queue behind long application builds.
+const composeDeployQueue = new Queue("compose-deploy", {
+  connection: redis,
+  defaultJobOptions: {
+    removeOnComplete: { count: 50 },
+    removeOnFail: { count: 20 },
+    attempts: 1,
+  },
+});
+
 const backupQueue = new Queue("backup", {
   connection: redis,
   defaultJobOptions: {
@@ -66,4 +77,11 @@ const isRateLimited = async (
   }
 };
 
-export { refreshTokenStore, redis, deployQueue, backupQueue, isRateLimited };
+export {
+  refreshTokenStore,
+  redis,
+  deployQueue,
+  composeDeployQueue,
+  backupQueue,
+  isRateLimited,
+};

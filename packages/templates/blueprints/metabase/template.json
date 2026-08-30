@@ -1,0 +1,29 @@
+{
+  "id": "metabase",
+  "name": "Metabase",
+  "version": "latest",
+  "description": "Open-source business intelligence and dashboards. Uses its embedded H2 database — fine to evaluate with, not for production data.",
+  "links": {
+    "github": "https://github.com/metabase/metabase",
+    "website": "https://www.metabase.com",
+    "docs": "https://www.metabase.com/docs/latest/"
+  },
+  "tags": [
+    "analytics",
+    "bi"
+  ],
+  "variables": {
+    "main_domain": "${domain}"
+  },
+  "domains": [
+    {
+      "service": "metabase",
+      "port": 3000,
+      "host": "${main_domain}"
+    }
+  ],
+  "env": {
+    "MAIN_DOMAIN": "${main_domain}"
+  },
+  "mounts": []
+}

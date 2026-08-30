@@ -1,0 +1,25 @@
+{
+  "id": "redis-7",
+  "name": "Redis 7",
+  "version": "7-alpine",
+  "description": "Redis 7 in-memory store for caching and queues, password-protected. Reachable on the server's public IP at the published port. For a database wired into DeployKit's backups and connection strings, use “Add Database” instead.",
+  "links": {
+    "website": "https://redis.io",
+    "docs": "https://redis.io/docs/"
+  },
+  "tags": [
+    "cache",
+    "kv",
+    "database"
+  ],
+  "variables": {
+    "redis_password": "${password:24}",
+    "db_port": "${randomPort}"
+  },
+  "domains": [],
+  "env": {
+    "REDIS_PASSWORD": "${redis_password}",
+    "DB_PORT": "${db_port}"
+  },
+  "mounts": []
+}

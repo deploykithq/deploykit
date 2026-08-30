@@ -20,6 +20,7 @@
       "@audit/*": ["./src/features/audit/*"],
       "@metrics/*": ["./src/features/metrics/*"],
       "@application/*": ["./src/features/application/*"],
+      "@compose/*": ["./src/features/compose/*"],
       "@dashboard/*": ["./src/features/dashboard/*"],
       "@templates/*": ["./src/features/templates/*"],
       "@status/*": ["./src/features/status/*"]

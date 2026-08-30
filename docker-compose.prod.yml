@@ -79,9 +79,21 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET}
       API_PORT: 4000
+      COMPOSE_ROOT: /var/lib/deploykit/compose
+      # Optional: where one-click templates get their hostnames.
+      # A wildcard domain pointing here (real certificates), or the host's
+      # public IP (sslip.io hostnames, plain HTTP).
+      TEMPLATES_BASE_DOMAIN: ${TEMPLATES_BASE_DOMAIN:-}
+      PUBLIC_IP: ${PUBLIC_IP:-}
+      TEMPLATES_REGISTRY_URL: ${TEMPLATES_REGISTRY_URL:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/backups/deploykit:/var/backups/deploykit
+      # SAME PATH ON BOTH SIDES — not a typo. Compose resolves a stack's
+      # relative binds against this directory and sends absolute paths to the
+      # host's daemon, so the path the API writes must be the path the daemon
+      # reads. Change one side and mounted config files arrive empty.
+      - /var/lib/deploykit/compose:/var/lib/deploykit/compose
     networks:
       - deploykit-network
     labels:

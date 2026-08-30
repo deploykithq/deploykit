@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import type { Template } from "@deploykit/shared";
 
 import { trpc } from "@lib/trpc";
 
-import type { DeployResultI } from "@templates/infrastructure/ui/interfaces/templates.interfaces";
+import type {
+  CatalogEntryT,
+  DeployResultI,
+} from "@templates/infrastructure/ui/interfaces/templates.interfaces";
 
 interface UseDeployTemplateParamsI {
-  template: Template | null;
+  template: CatalogEntryT | null;
   open: boolean;
   onClose: () => void;
   projectId?: string;
@@ -23,6 +25,7 @@ export const useDeployTemplate = ({
   const utils = trpc.useUtils();
 
   const [name, setName] = useState<string>("");
+  const [domain, setDomain] = useState<string>("");
   const [selectedProject, setSelectedProject] = useState<string>(
     projectId ?? "",
   );
@@ -33,20 +36,21 @@ export const useDeployTemplate = ({
     enabled: open && !projectId,
   });
 
-  const deployMutation = trpc.template.deploy.useMutation({
+  const deployMutation = trpc.compose.deployFromTemplate.useMutation({
     onSuccess: (data) => {
       utils.dashboard.summary.invalidate();
       utils.project.list.invalidate();
       utils.project.byId.invalidate({ id: data.projectId });
+      utils.compose.list.invalidate();
       setResult(data);
     },
-    onError: (err) => alert(err.message),
   });
 
   const effectiveProjectId = projectId ?? selectedProject;
 
   const close = () => {
     setName("");
+    setDomain("");
     setResult(null);
     setServerId(null);
     if (!projectId) setSelectedProject("");
@@ -62,36 +66,31 @@ export const useDeployTemplate = ({
       projectId: effectiveProjectId,
       name: name.trim(),
       serverId: serverId ?? undefined,
+      domain: domain.trim() || undefined,
     });
   };
 
   const projectOptions = [
     { value: "", label: "Select a project…" },
-    ...(projectsQuery.data ?? []).map((p) => ({
-      value: p.id,
-      label: p.name,
-    })),
+    ...(projectsQuery.data ?? []).map((p) => ({ value: p.id, label: p.name })),
   ];
 
   const noProjects =
     !projectId && projectsQuery.isSuccess && projectOptions.length === 1;
 
-  const goToApp = (pid: string, appId: string) => {
+  const goToStack = (pid: string, composeServiceId: string) => {
     close();
     navigate({
-      to: "/projects/$projectId/apps/$appId",
-      params: { projectId: pid, appId },
+      to: "/projects/$projectId/compose/$composeId",
+      params: { projectId: pid, composeId: composeServiceId },
     });
-  };
-
-  const goToProject = (pid: string) => {
-    close();
-    navigate({ to: "/projects/$projectId", params: { projectId: pid } });
   };
 
   return {
     name,
     setName,
+    domain,
+    setDomain,
     selectedProject,
     setSelectedProject,
     serverId,
@@ -101,9 +100,9 @@ export const useDeployTemplate = ({
     projectOptions,
     noProjects,
     deploying: deployMutation.isPending,
+    error: deployMutation.error?.message ?? null,
     close,
     handleSubmit,
-    goToApp,
-    goToProject,
+    goToStack,
   };
 };

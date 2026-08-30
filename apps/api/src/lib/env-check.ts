@@ -41,3 +41,41 @@ export const checkEnv = (): void => {
   }
   console.warn(`[env] WARNING — ${message}`);
 };
+
+/**
+ * Warn (don't fail) when Compose stacks cannot work on this host.
+ *
+ * Deliberately advisory: applications and databases are unaffected by a missing
+ * Compose plugin, so refusing to boot over it would take down a working
+ * instance for a feature the operator may not use. Checked at startup rather
+ * than at deploy time so the problem surfaces before someone tries.
+ */
+export const checkComposeSupport = async (): Promise<void> => {
+  const { localComposeRunner, composeRoot } = await import(
+    "../services/compose-runner"
+  );
+
+  if (!(await localComposeRunner.available())) {
+    console.warn(
+      "[compose] `docker compose` is not available on this host — Compose stacks " +
+        "cannot be deployed locally. Install the Compose plugin " +
+        "(Alpine: docker-cli-compose, Debian: docker-compose-plugin).",
+    );
+    return;
+  }
+
+  const root = composeRoot();
+  const { mkdir, access } = await import("fs/promises");
+  try {
+    await mkdir(root, { recursive: true });
+    await access(root);
+  } catch (err: any) {
+    console.warn(
+      `[compose] COMPOSE_ROOT (${root}) is not writable: ${err?.message ?? err}. ` +
+        "Stacks with mounted config files will fail to deploy.",
+    );
+    return;
+  }
+
+  console.log(`[compose] Ready (stack directory: ${root})`);
+};

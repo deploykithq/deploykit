@@ -1,0 +1,28 @@
+{
+  "id": "uptime-kuma",
+  "name": "Uptime Kuma",
+  "version": "1",
+  "description": "Self-hosted uptime monitoring with status pages and alerts. Create the admin account on first visit.",
+  "links": {
+    "github": "https://github.com/louislam/uptime-kuma",
+    "docs": "https://github.com/louislam/uptime-kuma/wiki"
+  },
+  "tags": [
+    "monitoring",
+    "status"
+  ],
+  "variables": {
+    "main_domain": "${domain}"
+  },
+  "domains": [
+    {
+      "service": "uptime-kuma",
+      "port": 3001,
+      "host": "${main_domain}"
+    }
+  ],
+  "env": {
+    "MAIN_DOMAIN": "${main_domain}"
+  },
+  "mounts": []
+}

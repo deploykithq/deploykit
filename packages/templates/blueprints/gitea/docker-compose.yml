@@ -1,0 +1,18 @@
+services:
+  gitea:
+    image: gitea/gitea:1
+    restart: unless-stopped
+    expose:
+      - "3000"
+    ports:
+      - "${SSH_PORT}:22"
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+      GITEA__server__ROOT_URL: https://${MAIN_DOMAIN}/
+      GITEA__server__SSH_PORT: ${SSH_PORT}
+    volumes:
+      - gitea-data:/data
+
+volumes:
+  gitea-data:

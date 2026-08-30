@@ -173,7 +173,7 @@ export const updateEnvVarsSchema = z.object({
  * no leading/trailing hyphens, TLD at least 2 chars.
  * Wildcards (*.example.com) are allowed for preview domains.
  */
-const FQDN_REGEX =
+export const FQDN_REGEX =
   /^(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
 
 export const addDomainSchema = z.object({

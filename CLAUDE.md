@@ -18,10 +18,10 @@ A self-hosted PaaS (open-source Vercel/Heroku alternative) for deploying applica
 
 - **`index.ts`** — Server entry: Fastify setup, CORS, security headers, rate limiting, tRPC adapter, Socket.IO, webhook routes, worker startup
 - **`trpc.ts`** — tRPC context (db, user, ip) and middleware: `publicProcedure`, `protectedProcedure`, `adminProcedure`, `operatorProcedure`
-- **`routers/`** — 11 tRPC routers (auth, project, application, database, server, user, audit, metrics, notification, dashboard, projectMember)
-- **`db/schema/`** — 13 Drizzle table definitions with relations
+- **`routers/`** — tRPC routers (auth, project, application, database, compose, template, server, user, audit, metrics, notification, dashboard, projectMember)
+- **`db/schema/`** — Drizzle table definitions with relations
 - **`services/`** — Business logic: build orchestration (Nixpacks/Dockerfile/Buildpacks), Docker operations, SSH, git, webhook processing, log streaming, metrics collection, notifications
-- **`workers/`** — BullMQ workers: deploy, backup, and scheduled jobs (metrics, image cleanup, audit cleanup)
+- **`workers/`** — BullMQ workers: deploy, compose-deploy, backup, and scheduled jobs (metrics, image cleanup, audit cleanup)
 - **`lib/`** — Utilities: AES-256-GCM encryption, audit logging, permissions, Redis client, Socket.IO init
 
 ### Authorization & RBAC (READ BEFORE TOUCHING ANY ROUTER)
@@ -42,14 +42,15 @@ procedure builder in `trpc.ts`:
 **2. Project role** (`project_members.role`, per-project) — enforced **inside the handler**
 via helpers in `lib/permissions.ts`:
 - `getProjectRole(user, projectId)` / `getProjectRoleByAppId(user, appId)` /
-  `getProjectRoleByDbId(user, dbId)` → returns the effective role or `null` (no access).
+  `getProjectRoleByDbId(user, dbId)` / `getProjectRoleByComposeId(user, stackId)` →
+  returns the effective role or `null` (no access).
   Global admins always resolve to `admin`.
 - Gate with `canView` (any member), `canOperate` (operator+), `isAdmin`, `canViewSecrets`
   (decrypt env vars / connection strings). For `serviceId`-keyed endpoints
   (metrics/logs) use `canViewService` from `lib/socket-auth.ts`.
 
-**THE CRITICAL RULE:** almost every `application.*`, `database.*`, and `projectMember.*`
-procedure is a `protectedProcedure`, so the real authorization lives **inside the handler**.
+**THE CRITICAL RULE:** almost every `application.*`, `database.*`, `compose.*`, and
+`projectMember.*` procedure is a `protectedProcedure`, so the real authorization lives **inside the handler**.
 Any such procedure that touches a project-scoped resource MUST resolve the caller's project
 role and reject when it's `null` — **including read-only queries** (logs, stats, deployments,
 backups all leak data). A missing check = IDOR: any logged-in user reads/acts on another
@@ -68,6 +69,43 @@ resolved and rejected on `null`, (3) right level (`canOperate`/`isAdmin`/`canVie
 (4) secrets never returned to non-`canViewSecrets` callers, (5) the same applies to queries,
 not just mutations.
 
+### Compose stacks & templates
+
+Two kinds of service exist side by side: an **application** (one container, built
+from Git or pulled as an image) and a **Compose stack** (`compose_services`) — a whole
+`docker-compose.yml` deployed as a unit under the Compose project name `dk-<name>`.
+
+**One-click templates are stacks.** A blueprint is a directory in the template
+catalogue holding `docker-compose.yml` + `template.json` (+ an optional logo):
+
+- `template.json` never contains a secret. It *declares* how to derive one —
+  `"secret": "${base64:64}"` — and `services/template-variables.ts` generates a fresh
+  value per deployment. Helpers: `domain`, `password:N`, `base64:N`, `hash:N`, `uuid`,
+  `randomPort`, `email`, `username`, `timestamp`, `jwt:<secretVar>[:<role>]`.
+- **Two different `${}` syntaxes, deliberately.** DeployKit's generator syntax exists
+  only in `template.json`. Inside `docker-compose.yml`, `${VAR}` is *Compose's own*
+  interpolation, fed by the `.env` DeployKit writes next to it from the resolved `env`.
+  Never resolve template variables inside the Compose file.
+- The catalogue is fetched from `TEMPLATES_REGISTRY_URL` and cached in Redis;
+  `packages/templates` is the offline fallback. After editing `blueprints/**` run
+  `pnpm --filter @deploykit/templates generate`.
+
+`services/compose.ts` injects, at deploy time only, the `deploykit.*` ownership labels
+(which is how logs, metrics and the terminal find a stack's containers), the Traefik
+labels for routed services, and the shared network. The user's Compose file is never
+rewritten on disk.
+
+**The same-path rule (`COMPOSE_ROOT`).** The API runs in a container with the *host's*
+Docker socket, so the daemon executing everything is the host's. Compose resolves a
+stack's relative binds into absolute paths and sends them to that daemon. The stack
+directory (default `/var/lib/deploykit/compose`) is therefore bind-mounted at the
+**same absolute path** on both sides in `docker-compose.prod.yml`. Break that and
+mounted config files silently arrive as empty directories.
+
+Deployments are shared: `deployments.application_id` is nullable and
+`deployments.compose_service_id` is its counterpart, with a CHECK that exactly one is
+set. Any code reading `application_id` must handle a stack deployment.
+
 ### Frontend structure (`apps/web/src/`)
 
 - **`router.tsx`** — Route definitions with lazy loading and auth guards via `beforeLoad`
@@ -84,7 +122,11 @@ not just mutations.
 
 ### Environment
 
-Requires: `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `ENCRYPTION_KEY`. See `.env` for dev defaults, `.env.production` for production template.
+Requires: `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `ENCRYPTION_KEY`.
+Compose stacks add `COMPOSE_ROOT` (see the same-path rule above) and, optionally,
+`TEMPLATES_BASE_DOMAIN` / `PUBLIC_IP` (where a template's generated hostname comes from)
+and `TEMPLATES_REGISTRY_URL`. See `.env` for dev defaults, `.env.production` for the
+production template.
 
 ### Database migrations
 
@@ -92,4 +134,5 @@ Schema lives in `apps/api/src/db/schema/`. After changing schema files, run `pnp
 
 ### Production
 
-Multi-stage Dockerfile builds both apps into a single container (Node 20 Alpine + Docker CLI + Nixpacks). Traefik v3 handles reverse proxy and automatic Let's Encrypt SSL. See `docker-compose.prod.yml`.
+Multi-stage Dockerfile builds both apps into a single container (Node 20 Alpine + Docker
+CLI + the Compose plugin + Nixpacks). Traefik v3 handles reverse proxy and automatic Let's Encrypt SSL. See `docker-compose.prod.yml`.

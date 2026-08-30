@@ -1,0 +1,33 @@
+{
+  "id": "umami-postgres",
+  "name": "Umami",
+  "version": "postgresql-latest",
+  "description": "Privacy-friendly web analytics, wired to its own PostgreSQL 16. Default login: admin / umami — change it after first login.",
+  "links": {
+    "github": "https://github.com/umami-software/umami",
+    "website": "https://umami.is",
+    "docs": "https://umami.is/docs"
+  },
+  "tags": [
+    "analytics",
+    "postgres"
+  ],
+  "variables": {
+    "main_domain": "${domain}",
+    "db_password": "${password:24}",
+    "app_secret": "${base64:32}"
+  },
+  "domains": [
+    {
+      "service": "umami",
+      "port": 3000,
+      "host": "${main_domain}"
+    }
+  ],
+  "env": {
+    "MAIN_DOMAIN": "${main_domain}",
+    "DB_PASSWORD": "${db_password}",
+    "APP_SECRET": "${app_secret}"
+  },
+  "mounts": []
+}

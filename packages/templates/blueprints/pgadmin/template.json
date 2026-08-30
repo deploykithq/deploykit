@@ -1,0 +1,33 @@
+{
+  "id": "pgadmin",
+  "name": "pgAdmin 4",
+  "version": "latest",
+  "description": "Web UI to manage PostgreSQL databases. Log in with the generated email and password.",
+  "links": {
+    "website": "https://www.pgadmin.org",
+    "docs": "https://www.pgadmin.org/docs/"
+  },
+  "tags": [
+    "postgres",
+    "admin",
+    "database"
+  ],
+  "variables": {
+    "main_domain": "${domain}",
+    "admin_email": "${email}",
+    "admin_password": "${password:20}"
+  },
+  "domains": [
+    {
+      "service": "pgadmin",
+      "port": 80,
+      "host": "${main_domain}"
+    }
+  ],
+  "env": {
+    "MAIN_DOMAIN": "${main_domain}",
+    "PGADMIN_EMAIL": "${admin_email}",
+    "PGADMIN_PASSWORD": "${admin_password}"
+  },
+  "mounts": []
+}
