@@ -31,7 +31,11 @@ import { WebhookService } from "./services/webhook";
 import { prewarmTrivyDb, scanConfig } from "./services/trivy-scanner";
 import { ensureLogStream, stopLogStream, isCollected } from "./services/logs";
 import { isRateLimited } from "./lib/redis";
-import { checkEnv, checkComposeSupport } from "./lib/env-check";
+import {
+  checkEnv,
+  checkComposeSupport,
+  checkTemplateRegistry,
+} from "./lib/env-check";
 
 const PORT = parseInt(process.env.API_PORT || "3001", 10);
 const webhookService = new WebhookService();
@@ -264,6 +268,10 @@ async function main() {
   // Advisory: a missing Compose plugin must not stop the API from serving
   // applications and databases, so this warns rather than throws.
   checkComposeSupport().catch(() => {});
+
+  // Also warms the catalogue cache, which is the only thing that keeps the
+  // Templates page populated if the registry goes down later.
+  checkTemplateRegistry().catch(() => {});
 
   startDeployWorker();
   startComposeDeployWorker();

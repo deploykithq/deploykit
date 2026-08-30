@@ -86,9 +86,25 @@ catalogue holding `docker-compose.yml` + `template.json` (+ an optional logo):
   only in `template.json`. Inside `docker-compose.yml`, `${VAR}` is *Compose's own*
   interpolation, fed by the `.env` DeployKit writes next to it from the resolved `env`.
   Never resolve template variables inside the Compose file.
-- The catalogue is fetched from `TEMPLATES_REGISTRY_URL` and cached in Redis;
-  `packages/templates` is the offline fallback. After editing `blueprints/**` run
-  `pnpm --filter @deploykit/templates generate`.
+- **Blueprints do not live in this repository.** They live in
+  `deploykithq/deploykit-templates`, and DeployKit fetches them at runtime from
+  `TEMPLATES_REGISTRY_URL` (default: that repo's raw URL). Nothing is bundled
+  into the image, so `services/template-catalog.ts` is the only path by which a
+  template reaches the UI. Publishing a template is a commit there — no
+  DeployKit release.
+- **The cache is therefore load-bearing, not an optimisation.** It is
+  stale-while-error: a Redis entry lives 30 days but the registry is re-read
+  after an hour, and a failed read keeps serving the last copy that validated.
+  `listTemplates()` never throws; it reports `source` as `remote`, `stale` (an
+  outage, serving the cached copy) or `unavailable` (an outage with nothing
+  cached), and the Templates page renders each differently. Only an install that
+  has never reached the registry shows an empty catalogue.
+- The blueprint contract has one definition, `templateSpecSchema` in
+  `packages/shared`. The catalogue repo validates contributions against a JSON
+  Schema derived from it; re-emit it there after changing the Zod schema:
+  ```
+  pnpm --filter @deploykit/shared schema:emit -- --out ../deploykit-templates/schema/template.schema.json
+  ```
 
 `services/compose.ts` injects, at deploy time only, the `deploykit.*` ownership labels
 (which is how logs, metrics and the terminal find a stack's containers), the Traefik

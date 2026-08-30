@@ -11,7 +11,8 @@
     "db:migrate": "pnpm --filter @deploykit/api db:migrate",
     "db:studio": "pnpm --filter @deploykit/api db:studio",
     "lint": "pnpm -r lint",
-    "clean": "pnpm -r clean"
+    "clean": "pnpm -r clean",
+    "schema:emit": "pnpm --filter @deploykit/shared schema:emit"
   },
   "engines": {
     "node": ">=20",

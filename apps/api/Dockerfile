@@ -7,7 +7,6 @@ FROM base AS deps
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/shared/package.json ./packages/shared/
-COPY packages/templates/package.json ./packages/templates/
 RUN pnpm install --no-frozen-lockfile
 
 # Production
@@ -20,7 +19,6 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
-COPY --from=deps /app/packages/templates/node_modules ./packages/templates/node_modules
 COPY . .
 
 RUN pnpm --filter @deploykit/shared build 2>/dev/null || true

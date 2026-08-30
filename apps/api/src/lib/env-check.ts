@@ -79,3 +79,40 @@ export const checkComposeSupport = async (): Promise<void> => {
 
   console.log(`[compose] Ready (stack directory: ${root})`);
 };
+
+/**
+ * Warn (don't fail) when the template catalogue cannot be reached.
+ *
+ * Blueprints are fetched from a public registry rather than bundled into the
+ * image, so a blocked egress or a mistyped `TEMPLATES_REGISTRY_URL` leaves the
+ * Templates page empty with no clue in the server log. Doing it at startup also
+ * warms the cache, which is what keeps the page working through a later outage.
+ *
+ * Advisory for the same reason as the Compose check: nothing else in DeployKit
+ * depends on the catalogue.
+ */
+export const checkTemplateRegistry = async (): Promise<void> => {
+  const { listTemplates, registryUrl } = await import(
+    "../services/template-catalog"
+  );
+
+  const { templates, source, error } = await listTemplates();
+
+  if (source === "unavailable") {
+    console.warn(
+      `[templates] Cannot reach the registry at ${registryUrl()} (${error}). ` +
+        "The Templates page will be empty until it is reachable.",
+    );
+    return;
+  }
+
+  if (source === "stale") {
+    console.warn(
+      `[templates] Registry at ${registryUrl()} is unreachable (${error}); ` +
+        `serving ${templates.length} cached template(s).`,
+    );
+    return;
+  }
+
+  console.log(`[templates] ${templates.length} template(s) from ${registryUrl()}`);
+};

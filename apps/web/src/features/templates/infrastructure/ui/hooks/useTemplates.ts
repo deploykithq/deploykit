@@ -12,7 +12,7 @@ import type { CatalogEntryT } from "@templates/infrastructure/ui/interfaces/temp
  * al servidor por pulsación solo añadiría latencia.
  */
 export const useTemplates = () => {
-  const { data, isLoading } = trpc.template.list.useQuery();
+  const { data, isLoading, isFetching, refetch } = trpc.template.list.useQuery();
 
   const [selected, setSelected] = useState<CatalogEntryT | null>(null);
   const [query, setQuery] = useState("");
@@ -60,7 +60,16 @@ export const useTemplates = () => {
     setActiveTag,
     selected,
     setSelected,
-    /** "bundled" avisa de que el registro remoto no está accesible. */
+    /**
+     * Los blueprints no viajan dentro de la imagen, así que el catálogo puede
+     * llegar de tres formas: "remote" (recién leído del registro), "stale"
+     * (el registro no responde y esto es la última copia buena) y
+     * "unavailable" (no responde y no hay copia). Las dos últimas se avisan.
+     */
     source: data?.source ?? "remote",
+    error: data?.error,
+    cachedAt: data?.cachedAt,
+    isRefetching: isFetching && !isLoading,
+    refetch,
   };
 };

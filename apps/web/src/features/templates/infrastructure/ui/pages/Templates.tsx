@@ -1,4 +1,6 @@
-import { Loader2, Search, WifiOff, X } from "lucide-react";
+import { Loader2, RefreshCw, Search, WifiOff, X } from "lucide-react";
+
+import { Button } from "@shared/components/button";
 
 import { Input } from "@shared/components/input";
 
@@ -24,6 +26,10 @@ export const TemplatesPage = () => {
     selected,
     setSelected,
     source,
+    error,
+    cachedAt,
+    isRefetching,
+    refetch,
   } = useTemplates();
 
   if (isLoading) {
@@ -44,13 +50,22 @@ export const TemplatesPage = () => {
         </p>
       </div>
 
-      {source === "bundled" && (
+      {source === "stale" && (
         <div className="flex items-start gap-2.5 rounded-lg border border-yellow-500/30 bg-yellow-900/10 p-3">
           <WifiOff className="w-4 h-4 text-yellow-600 shrink-0 mt-0.5" />
-          <p className="text-xs text-text-secondary">
-            The template registry is unreachable, so this is the catalogue
-            bundled with DeployKit. It may be older than what is published.
-          </p>
+          <div className="text-xs text-text-secondary">
+            <p>
+              The template registry is unreachable, so this is the last copy
+              DeployKit fetched
+              {cachedAt ? ` (${new Date(cachedAt).toLocaleString()})` : ""}. It
+              may be older than what is published.
+            </p>
+            {error && (
+              <p className="text-text-muted mt-1 font-mono text-[11px]">
+                {error}
+              </p>
+            )}
+          </div>
         </div>
       )}
 
@@ -89,7 +104,38 @@ export const TemplatesPage = () => {
         )}
       </div>
 
-      {filtered.length === 0 ? (
+      {source === "unavailable" ? (
+        <div className="text-center py-16 space-y-3">
+          <WifiOff className="w-6 h-6 text-text-muted mx-auto" />
+          <div>
+            <p className="text-sm text-text-secondary">
+              Cannot reach the template registry, and nothing is cached yet.
+            </p>
+            <p className="text-xs text-text-muted mt-1">
+              Templates are fetched from a public catalogue rather than shipped
+              inside DeployKit. Check this server's outbound access, or point
+              <code className="mx-1">TEMPLATES_REGISTRY_URL</code>
+              at a reachable catalogue.
+            </p>
+            {error && (
+              <p className="text-[11px] text-text-muted mt-2 font-mono">
+                {error}
+              </p>
+            )}
+          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => refetch()}
+            disabled={isRefetching}
+          >
+            <RefreshCw
+              className={cn("w-3.5 h-3.5", isRefetching && "animate-spin")}
+            />
+            {isRefetching ? "Retrying…" : "Retry"}
+          </Button>
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="text-center py-16">
           <p className="text-sm text-text-secondary">
             No templates match{query ? ` “${query}”` : ""}
