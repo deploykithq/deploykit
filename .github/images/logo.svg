@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 208 44" fill="none" role="img" aria-label="DeployKit">
+  <defs>
+    <linearGradient id="dk-lid" x1="7" y1="3" x2="25" y2="10.6" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#c3bdff"/>
+      <stop offset="1" stop-color="#8f83f5"/>
+    </linearGradient>
+    <linearGradient id="dk-left" x1="3" y1="15.5" x2="16" y2="28" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7c6cf7"/>
+      <stop offset="1" stop-color="#6555e0"/>
+    </linearGradient>
+    <linearGradient id="dk-right" x1="29" y1="15.5" x2="16" y2="28" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5b4bd6"/>
+      <stop offset="1" stop-color="#4436b4"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(0 3) scale(1.19)" stroke-linejoin="round" stroke-width="1.2">
+    <path d="M16 3 25 6.8 16 10.6 7 6.8Z" fill="url(#dk-lid)" stroke="url(#dk-lid)"/>
+    <path d="M3 15.5 16 21v7L3 22.5Z" fill="url(#dk-left)" stroke="url(#dk-left)"/>
+    <path d="M29 15.5 16 21v7l13-5.5Z" fill="url(#dk-right)" stroke="url(#dk-right)"/>
+  </g>
+  <text x="47" y="30" fill="#8f83f5" font-family="Outfit, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="27" font-weight="600" letter-spacing="-.7">DeployKit</text>
+</svg>

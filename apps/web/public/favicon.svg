@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" role="img" aria-label="DeployKit">
+  <defs>
+    <linearGradient id="dk-tile" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7c6cf7"/>
+      <stop offset="1" stop-color="#4f3fca"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7.5" fill="url(#dk-tile)"/>
+  <g transform="translate(16 16) scale(.8) translate(-16 -15.5)" stroke-linejoin="round" stroke-width="1.4" fill="#fff" stroke="#fff">
+    <path d="M16 3 25 6.8 16 10.6 7 6.8Z"/>
+    <path d="M3 15.5 16 21v7L3 22.5Z" fill-opacity=".93" stroke-opacity=".93"/>
+    <path d="M29 15.5 16 21v7l13-5.5Z" fill-opacity=".64" stroke-opacity=".64"/>
+  </g>
+</svg>

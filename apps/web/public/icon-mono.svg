@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="DeployKit">
+  <g stroke="currentColor" stroke-linejoin="round" stroke-width="1.2">
+    <path d="M16 3 25 6.8 16 10.6 7 6.8Z"/>
+    <path d="M3 15.5 16 21l13-5.5v7L16 28 3 22.5Z"/>
+  </g>
+</svg>
