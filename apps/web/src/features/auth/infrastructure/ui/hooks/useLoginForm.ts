@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { useAuthStore } from "@lib/auth";
 import { trpc } from "@lib/trpc";
@@ -11,6 +12,7 @@ export const useLoginForm = () => {
 
   const setAuth = useAuthStore((s) => s.setAuth);
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const { data: hasUsers, isLoading: checkingUsers } =
     trpc.auth.hasUsers.useQuery();
@@ -19,11 +21,15 @@ export const useLoginForm = () => {
 
   const handleAuthSuccess = useCallback(
     (data: { user: any; accessToken: string; refreshToken: string }) => {
+      // A new session must start with an empty cache. Anything the previous
+      // session left behind (notably a failed auth.me) would otherwise be read
+      // back by the app layout and mistaken for the *current* session state.
+      queryClient.removeQueries();
       setAuth(data.user, data.accessToken, data.refreshToken);
       // Navigate to dashboard — this triggers the router to re-evaluate guards
       navigate({ to: "/" });
     },
-    [setAuth, navigate],
+    [queryClient, setAuth, navigate],
   );
 
   const handleAuthError = useCallback(

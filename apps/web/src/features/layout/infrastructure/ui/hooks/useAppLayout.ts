@@ -26,16 +26,25 @@ export const useAppLayout = () => {
     }
   }, [accessToken, refreshToken, navigate, location.pathname]);
 
+  // Sólo hace falta rehidratar cuando hay tokens pero no usuario en memoria.
+  const needsRehydration = !user && !!(accessToken || refreshToken);
+
   const { data, error } = trpc.auth.me.useQuery(undefined, {
-    enabled: !user && !!(accessToken || refreshToken),
+    enabled: needsRehydration,
     retry: false,
   });
 
   useEffect(() => {
+    // La caché de React Query sobrevive al fin de sesión: con la query
+    // deshabilitada, `data`/`error` son los que dejó la sesión ANTERIOR.
+    // Reaccionar a ese error borraría los tokens recién emitidos por el login
+    // y devolvería al usuario a /login en bucle hasta recargar la página.
+    if (!needsRehydration) return;
+
     if (data && accessToken && refreshToken) {
       useAuthStore.getState().setAuth(data as any, accessToken, refreshToken);
     } else if (error) {
       useAuthStore.getState().clearTokens();
     }
-  }, [data, accessToken, refreshToken, error]);
+  }, [data, accessToken, refreshToken, error, needsRehydration]);
 };
