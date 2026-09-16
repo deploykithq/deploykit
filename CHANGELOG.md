@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.3.0](https://github.com/deploykithq/deploykit/compare/v0.2.0...v0.3.0) (2026-09-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* added ssh keys module, and change how you can connect to a remote server ([#9](https://github.com/deploykithq/deploykit/issues/9))
+
+### Features
+
+* added ssh keys module, and change how you can connect to a remote server ([#9](https://github.com/deploykithq/deploykit/issues/9)) ([4509b10](https://github.com/deploykithq/deploykit/commit/4509b104423133c2dab1cfa13630f90b419f09ed))
+
+
+### Bug Fixes
+
+* solved a refresh bug in login ([931062c](https://github.com/deploykithq/deploykit/commit/931062c14b0c4162e9c628914dc669b78e58144a))
+
+
+### Documentation
+
+* add author field to package.json ([91e166f](https://github.com/deploykithq/deploykit/commit/91e166fd927399cff3dafa19971a97508aa948fd))
+* added icons ([ae4d6dc](https://github.com/deploykithq/deploykit/commit/ae4d6dc5d4aa34b856455c8575de7cbb1d849bae))
+
 ## [0.2.0](https://github.com/deploykithq/deploykit/compare/v0.1.0...v0.2.0) (2026-08-24)
 
 
