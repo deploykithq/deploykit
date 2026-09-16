@@ -1,6 +1,7 @@
 {
   "name": "deploykit",
   "version": "0.2.0",
+  "author": "Ridel Saavedra Flores",
   "private": true,
   "scripts": {
     "dev": "pnpm --parallel -r dev",
