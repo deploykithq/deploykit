@@ -1,0 +1,346 @@
+import { randomBytes, randomInt, randomUUID } from "crypto";
+import jwt from "jsonwebtoken";
+
+import type {
+  TemplateDomainT,
+  TemplateMountT,
+  TemplateSpecT,
+} from "@deploykit/shared";
+
+/**
+ * Resolves the `variables` block of a blueprint into concrete values, then
+ * substitutes those values into its `domains`, `env` and `mounts`.
+ *
+ * This runs once per deployment and only on the server: the generated material
+ * is credentials, so it must never be derivable from anything the catalogue
+ * publishes or the browser can see.
+ *
+ * Two passes, because `${jwt:...}` needs another variable's value:
+ *
+ *   pass 1  every helper except `jwt`, in any order (they are independent)
+ *   pass 2  `jwt`, reading only pass-1 results
+ *
+ * Restricting pass 2 to pass-1 results is what makes declaration order
+ * irrelevant to blueprint authors while keeping the graph acyclic by
+ * construction — a jwt referencing another jwt is rejected rather than signed
+ * with an undefined secret.
+ */
+
+class TemplateVariableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TemplateVariableError";
+  }
+}
+
+interface ResolveContextI {
+  /** Value of `${domain}`: the user's domain, or one generated for the stack. */
+  domain: string;
+}
+
+interface ResolvedTemplateI {
+  variables: Record<string, string>;
+  /**
+   * The subset of `variables` produced by a credential-generating helper. The
+   * deploy result shows these once so the user can store them — afterwards they
+   * only exist encrypted, inside the stack's env.
+   */
+  secrets: Record<string, string>;
+  domains: TemplateDomainT[];
+  env: Record<string, string>;
+  mounts: TemplateMountT[];
+}
+
+/**
+ * `$${` is an escape for a literal `${`. Compose files and shell-style defaults
+ * legitimately contain `${...}`, and a blueprint must be able to pass one
+ * through without us trying to resolve it.
+ */
+const ESCAPE_SENTINEL = "\0DK_ESCAPED_BRACE\0";
+
+const protectEscapes = (value: string): string =>
+  value.split("$${").join(ESCAPE_SENTINEL);
+
+const restoreEscapes = (value: string): string =>
+  value.split(ESCAPE_SENTINEL).join("${");
+
+/** Built fresh per scan: a shared global regex carries `lastIndex` and skips matches. */
+const placeholderRegex = (): RegExp =>
+  /\$\{([a-zA-Z_][a-zA-Z0-9_]*)(?::([^}]*))?\}/g;
+
+const PASSWORD_ALPHABET =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+/**
+ * Rejection sampling, not `% alphabet.length`: 256 is not a multiple of 62, so
+ * modulo would make the first 8 characters of the alphabet measurably likelier.
+ */
+const randomString = (length: number): string => {
+  const max = 256 - (256 % PASSWORD_ALPHABET.length);
+  let out = "";
+  while (out.length < length) {
+    for (const byte of randomBytes(length)) {
+      if (byte >= max) continue;
+      out += PASSWORD_ALPHABET[byte % PASSWORD_ALPHABET.length];
+      if (out.length === length) break;
+    }
+  }
+  return out;
+};
+
+const randomSlug = (): string => `user-${randomBytes(3).toString("hex")}`;
+
+interface HelperSpecI {
+  /** Bounds for the numeric argument, and what it means when omitted. */
+  arg?: { min: number; max: number; fallback: number };
+  /** Whether the produced value is a credential worth surfacing once. */
+  secret?: boolean;
+  run: (arg: number, ctx: ResolveContextI) => string;
+}
+
+const HELPERS: Record<string, HelperSpecI> = {
+  domain: { run: (_arg, ctx) => ctx.domain },
+  password: {
+    arg: { min: 8, max: 256, fallback: 16 },
+    secret: true,
+    run: (n) => randomString(n),
+  },
+  base64: {
+    arg: { min: 8, max: 512, fallback: 32 },
+    secret: true,
+    run: (n) => randomBytes(n).toString("base64"),
+  },
+  hash: {
+    arg: { min: 4, max: 128, fallback: 16 },
+    secret: true,
+    run: (n) => randomBytes(n).toString("hex"),
+  },
+  uuid: { run: () => randomUUID() },
+  randomPort: { run: () => String(randomInt(20_000, 65_001)) },
+  username: { run: () => randomSlug() },
+  email: { run: (_arg, ctx) => `${randomSlug()}@${ctx.domain}` },
+  timestamp: { run: () => new Date().toISOString() },
+};
+
+/** Helper name that is resolved in the second pass instead of the first. */
+const JWT_HELPER = "jwt";
+
+const parseHelperArg = (
+  helperName: string,
+  spec: HelperSpecI,
+  raw: string | undefined,
+): number => {
+  if (!spec.arg) return 0;
+  if (raw === undefined || raw === "") return spec.arg.fallback;
+
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed)) {
+    throw new TemplateVariableError(
+      `\${${helperName}:${raw}} — argument must be a whole number`,
+    );
+  }
+  if (parsed < spec.arg.min || parsed > spec.arg.max) {
+    throw new TemplateVariableError(
+      `\${${helperName}:${raw}} — argument must be between ${spec.arg.min} and ${spec.arg.max}`,
+    );
+  }
+  return parsed;
+};
+
+/**
+ * Sign `${jwt:<secretVariable>[:<role>]}`.
+ *
+ * The long expiry matches how these tokens are used by the stacks that need
+ * them (Supabase-style anon/service keys baked into a deployment's env): they
+ * are rotated by redeploying, not by refresh.
+ */
+const signJwt = (
+  rawArg: string | undefined,
+  resolved: Record<string, string>,
+): string => {
+  const [secretName, role] = (rawArg ?? "").split(":");
+  if (!secretName) {
+    throw new TemplateVariableError(
+      "${jwt:...} needs the name of the variable holding its signing secret",
+    );
+  }
+
+  const secret = resolved[secretName];
+  if (secret === undefined) {
+    throw new TemplateVariableError(
+      `\${jwt:${secretName}} references "${secretName}", which is not a resolved variable. ` +
+        "A jwt can only be signed with a variable produced by another helper, not by another jwt.",
+    );
+  }
+
+  return jwt.sign({ iss: "deploykit", ...(role ? { role } : {}) }, secret, {
+    algorithm: "HS256",
+    expiresIn: "3650d",
+  });
+};
+
+/**
+ * Replace every helper call in `value`. Returns `null` when the value defers to
+ * the second pass (it contains at least one `${jwt:...}`).
+ */
+const runFirstPass = (
+  value: string,
+  ctx: ResolveContextI,
+): { text: string; secret: boolean } | null => {
+  if (placeholderRegex().test(protectEscapes(value))) {
+    const names = [...protectEscapes(value).matchAll(placeholderRegex())].map(
+      (m) => m[1]!,
+    );
+    if (names.includes(JWT_HELPER)) return null;
+  }
+
+  let secret = false;
+  const text = protectEscapes(value).replace(
+    placeholderRegex(),
+    (_match, name: string, rawArg: string | undefined) => {
+      const spec = HELPERS[name];
+      if (!spec) {
+        throw new TemplateVariableError(
+          `Unknown template helper "\${${name}}". Supported: ${[
+            ...Object.keys(HELPERS),
+            JWT_HELPER,
+          ].join(", ")}`,
+        );
+      }
+      if (spec.secret) secret = true;
+      return spec.run(parseHelperArg(name, spec, rawArg), ctx);
+    },
+  );
+
+  return { text: restoreEscapes(text), secret };
+};
+
+/**
+ * Resolve a blueprint's `variables` block.
+ *
+ * @returns every variable name mapped to its concrete value.
+ */
+const resolveVariables = (
+  variables: Record<string, string>,
+  ctx: ResolveContextI,
+): Record<string, string> => resolveVariablesWithSecrets(variables, ctx).values;
+
+const resolveVariablesWithSecrets = (
+  variables: Record<string, string>,
+  ctx: ResolveContextI,
+): { values: Record<string, string>; secretNames: Set<string> } => {
+  const values: Record<string, string> = {};
+  const secretNames = new Set<string>();
+  const deferred: Array<[string, string]> = [];
+
+  for (const [name, raw] of Object.entries(variables)) {
+    const first = runFirstPass(raw, ctx);
+    if (first === null) {
+      deferred.push([name, raw]);
+      continue;
+    }
+    values[name] = first.text;
+    if (first.secret) secretNames.add(name);
+  }
+
+  // Pass 2: jwt only, reading pass-1 values.
+  for (const [name, raw] of deferred) {
+    values[name] = restoreEscapes(
+      protectEscapes(raw).replace(
+        placeholderRegex(),
+        (_match, helperName: string, rawArg: string | undefined) => {
+          if (helperName !== JWT_HELPER) {
+            // Unreachable via runFirstPass, but a blueprint mixing a jwt and
+            // another helper in one value would land here.
+            const spec = HELPERS[helperName];
+            if (!spec) {
+              throw new TemplateVariableError(
+                `Unknown template helper "\${${helperName}}"`,
+              );
+            }
+            return spec.run(parseHelperArg(helperName, spec, rawArg), ctx);
+          }
+          return signJwt(rawArg, values);
+        },
+      ),
+    );
+    secretNames.add(name);
+  }
+
+  return { values, secretNames };
+};
+
+/**
+ * Replace `${name}` references with already-resolved variable values.
+ *
+ * An unknown name is an error rather than an empty string: a typo in a
+ * blueprint would otherwise deploy a stack with a blank secret or a blank
+ * hostname, which fails much later and much more confusingly.
+ */
+const substitute = (
+  input: string,
+  resolved: Record<string, string>,
+): string => {
+  const replaced = protectEscapes(input).replace(
+    placeholderRegex(),
+    (_match, name: string, rawArg: string | undefined) => {
+      if (rawArg !== undefined) {
+        throw new TemplateVariableError(
+          `\${${name}:${rawArg}} — helpers may only be called inside "variables"; ` +
+            "elsewhere, reference a variable by name.",
+        );
+      }
+      const value = resolved[name];
+      if (value === undefined) {
+        throw new TemplateVariableError(
+          `\${${name}} is not declared in this template's "variables"`,
+        );
+      }
+      return value;
+    },
+  );
+  return restoreEscapes(replaced);
+};
+
+/** Resolve a whole blueprint: variables first, then everything that reads them. */
+const resolveTemplateSpec = (
+  spec: TemplateSpecT,
+  ctx: ResolveContextI,
+): ResolvedTemplateI => {
+  const { values, secretNames } = resolveVariablesWithSecrets(
+    spec.variables,
+    ctx,
+  );
+
+  const secrets: Record<string, string> = {};
+  for (const name of secretNames) secrets[name] = values[name]!;
+
+  return {
+    variables: values,
+    secrets,
+    domains: spec.domains.map((d) => ({
+      ...d,
+      host: substitute(d.host, values),
+      ...(d.path ? { path: substitute(d.path, values) } : {}),
+    })),
+    env: Object.fromEntries(
+      Object.entries(spec.env).map(([key, value]) => [
+        key,
+        substitute(value, values),
+      ]),
+    ),
+    mounts: spec.mounts.map((m) => ({
+      filePath: m.filePath,
+      content: substitute(m.content, values),
+    })),
+  };
+};
+
+export {
+  TemplateVariableError,
+  resolveVariables,
+  resolveTemplateSpec,
+  substitute,
+  type ResolveContextI,
+  type ResolvedTemplateI,
+};

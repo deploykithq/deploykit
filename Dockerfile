@@ -31,8 +31,9 @@ FROM node:20-alpine AS production
 
 RUN corepack enable && corepack prepare pnpm@9 --activate
 
-# Install Docker CLI (needed for builds and backups)
-RUN apk add --no-cache docker-cli git curl
+# Install Docker CLI (needed for builds and backups) plus the Compose plugin,
+# which every stack deploy shells out to.
+RUN apk add --no-cache docker-cli docker-cli-compose git curl
 
 # Install Nixpacks
 RUN wget -qO- https://nixpacks.com/install.sh | bash || true
@@ -59,6 +60,9 @@ COPY --from=builder /app/apps/web/dist apps/web/dist
 
 # Create backup directory
 RUN mkdir -p /var/backups/deploykit
+# Stack directories — must be bind-mounted from the host at this same absolute
+# path so Compose's relative binds resolve on the daemon's filesystem.
+RUN mkdir -p /var/lib/deploykit/compose
 
 EXPOSE 3001
 

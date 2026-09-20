@@ -1,26 +1,32 @@
-import type { Template } from "@deploykit/shared";
+import type { TemplateMetaT } from "@deploykit/shared";
 
-interface DeployedApplicationI {
-  id: string;
-  name: string;
-  deployed: boolean;
-}
+/**
+ * Una entrada del catálogo tal y como la sirve la API: los metadatos del
+ * blueprint más la URL ya resuelta de su logo (que depende de si viene del
+ * registro remoto o del catálogo embebido).
+ */
+type CatalogEntryT = TemplateMetaT & { logoUrl?: string };
 
-interface DeployedDatabaseI {
-  id: string;
-  name: string;
-  connectionString: string;
+/** De dónde salió el catálogo que se está mostrando. */
+type CatalogSourceT = "remote" | "bundled";
+
+interface DeployedDomainI {
+  host: string;
+  https: boolean;
 }
 
 interface DeployResultI {
+  composeServiceId: string;
   projectId: string;
-  primaryApplicationId: string | null;
-  applications: DeployedApplicationI[];
-  databases: DeployedDatabaseI[];
+  name: string;
+  deploymentId: string;
+  domains: DeployedDomainI[];
+  /** Credenciales generadas: se muestran una sola vez, aquí. */
+  secrets: Record<string, string>;
 }
 
 interface DeployTemplateModalPropsI {
-  template: Template | null;
+  template: CatalogEntryT | null;
   open: boolean;
   onClose: () => void;
   /** Preselect a project (e.g. when launched from a project page). */
@@ -29,14 +35,20 @@ interface DeployTemplateModalPropsI {
 
 interface DeployResultViewPropsI {
   result: DeployResultI;
-  onGoToApp: (projectId: string, appId: string) => void;
-  onGoToProject: (projectId: string) => void;
+  onGoToStack: (projectId: string, composeServiceId: string) => void;
+}
+
+interface TemplateCardPropsI {
+  template: CatalogEntryT;
+  onDeploy: (template: CatalogEntryT) => void;
 }
 
 export type {
-  DeployedApplicationI,
-  DeployedDatabaseI,
+  CatalogEntryT,
+  CatalogSourceT,
+  DeployedDomainI,
   DeployResultI,
   DeployTemplateModalPropsI,
   DeployResultViewPropsI,
+  TemplateCardPropsI,
 };

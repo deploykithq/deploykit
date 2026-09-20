@@ -19,7 +19,7 @@ import { canViewService } from "../lib/socket-auth";
 const metricEnum = z.enum(["cpu", "memory", "net_rx", "net_tx"]);
 const operatorEnum = z.enum(["gt", "lt"]);
 const channelEnum = z.enum(["ui", "slack", "webhook"]);
-const serviceTypeEnum = z.enum(["application", "database"]);
+const serviceTypeEnum = z.enum(["application", "database", "compose"]);
 const rangeEnum = z.enum(["1h", "6h", "24h", "7d", "30d"]);
 
 const HOUR = 60 * 60 * 1000;

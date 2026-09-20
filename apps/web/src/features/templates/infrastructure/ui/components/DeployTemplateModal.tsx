@@ -1,5 +1,5 @@
-import { memo } from "react";
-import { ArrowRight, CheckCircle2, Copy } from "lucide-react";
+import { memo, useState } from "react";
+import { AlertTriangle, ArrowRight, CheckCircle2, Copy, Eye, EyeOff } from "lucide-react";
 
 import { Button } from "@shared/components/button";
 import { Input } from "@shared/components/input";
@@ -20,6 +20,8 @@ export const DeployTemplateModal: React.FC<DeployTemplateModalPropsI> = memo(
     const {
       name,
       setName,
+      domain,
+      setDomain,
       selectedProject,
       setSelectedProject,
       serverId,
@@ -29,10 +31,10 @@ export const DeployTemplateModal: React.FC<DeployTemplateModalPropsI> = memo(
       projectOptions,
       noProjects,
       deploying,
+      error,
       close,
       handleSubmit,
-      goToApp,
-      goToProject,
+      goToStack,
     } = useDeployTemplate({ template, open, onClose, projectId });
 
     if (!template) return null;
@@ -40,14 +42,12 @@ export const DeployTemplateModal: React.FC<DeployTemplateModalPropsI> = memo(
     return (
       <Modal open={open} onClose={close} title={`Deploy ${template.name}`}>
         {result ? (
-          <DeployResultView
-            result={result}
-            onGoToApp={goToApp}
-            onGoToProject={goToProject}
-          />
+          <DeployResultView result={result} onGoToStack={goToStack} />
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <p className="text-xs text-text-secondary">{template.description}</p>
+            <p className="text-xs text-text-secondary">
+              {template.description}
+            </p>
 
             <Input
               label="Name"
@@ -58,8 +58,20 @@ export const DeployTemplateModal: React.FC<DeployTemplateModalPropsI> = memo(
               autoFocus
             />
             <p className="text-[11px] text-text-muted -mt-2">
-              Lowercase letters, numbers and hyphens. Used to name the created
-              resources.
+              Lowercase letters, numbers and hyphens. Names the stack and every
+              container in it.
+            </p>
+
+            <Input
+              label="Domain (optional)"
+              value={domain}
+              onChange={(e) => setDomain(e.target.value)}
+              placeholder="app.example.com"
+              autoComplete="off"
+            />
+            <p className="text-[11px] text-text-muted -mt-2">
+              Leave empty and DeployKit generates one so the stack is reachable
+              without any DNS setup.
             </p>
 
             {!projectId &&
@@ -78,6 +90,8 @@ export const DeployTemplateModal: React.FC<DeployTemplateModalPropsI> = memo(
               ))}
 
             <ServerSelector value={serverId} onChange={setServerId} />
+
+            {error && <p className="text-xs text-danger">{error}</p>}
 
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="ghost" onClick={close}>
@@ -99,79 +113,96 @@ export const DeployTemplateModal: React.FC<DeployTemplateModalPropsI> = memo(
 
 const DeployResultView: React.FC<DeployResultViewPropsI> = ({
   result,
-  onGoToApp,
-  onGoToProject,
+  onGoToStack,
 }) => {
-  const primaryApp =
-    result.applications.find((a) => a.id === result.primaryApplicationId) ??
-    result.applications[0];
+  const [revealed, setRevealed] = useState(false);
+  const secretEntries = Object.entries(result.secrets);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 text-success">
         <CheckCircle2 className="w-5 h-5" />
-        <span className="text-sm font-medium">Resources created</span>
+        <span className="text-sm font-medium">Stack created — deploying…</span>
       </div>
 
-      {result.applications.length > 0 && (
+      {result.domains.length > 0 && (
         <div className="space-y-1.5">
-          <p className="text-xs font-medium text-text-secondary">
-            Applications
-          </p>
-          {result.applications.map((a) => (
-            <div
-              key={a.id}
-              className="flex items-center justify-between text-sm bg-surface-2 rounded-lg px-3 py-2"
+          <p className="text-xs font-medium text-text-secondary">URLs</p>
+          {result.domains.map((d) => (
+            <a
+              key={d.host}
+              href={`${d.https ? "https" : "http"}://${d.host}`}
+              target="_blank"
+              rel="noreferrer"
+              className="block text-sm text-accent hover:underline bg-surface-2 rounded-lg px-3 py-2 truncate"
             >
-              <span>{a.name}</span>
-              <span className="text-xs text-text-muted">
-                {a.deployed ? "deploying…" : "ready to deploy"}
-              </span>
-            </div>
+              {d.https ? "https" : "http"}://{d.host}
+            </a>
           ))}
+          <p className="text-[11px] text-text-muted">
+            Available once the containers finish starting.
+          </p>
         </div>
       )}
 
-      {result.databases.length > 0 && (
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium text-text-secondary">Databases</p>
-          {result.databases.map((d) => (
-            <div key={d.id} className="bg-surface-2 rounded-lg px-3 py-2">
-              <div className="text-sm mb-1">{d.name}</div>
-              {d.connectionString && (
-                <div className="flex items-center gap-2">
-                  <code className="text-[11px] text-text-muted break-all flex-1">
-                    {d.connectionString}
-                  </code>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      navigator.clipboard?.writeText(d.connectionString)
-                    }
-                    className="text-text-muted hover:text-text-primary shrink-0"
-                    title="Copy connection string"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+      {secretEntries.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-text-secondary">
+              Generated credentials
+            </p>
+            <button
+              type="button"
+              onClick={() => setRevealed(!revealed)}
+              className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary px-2 py-1 rounded-md hover:bg-surface-2"
+            >
+              {revealed ? (
+                <EyeOff className="w-3.5 h-3.5" />
+              ) : (
+                <Eye className="w-3.5 h-3.5" />
               )}
+              {revealed ? "Hide" : "Reveal"}
+            </button>
+          </div>
+
+          <div className="flex items-start gap-2 rounded-lg border border-yellow-500/30 bg-yellow-900/10 p-2.5">
+            <AlertTriangle className="w-3.5 h-3.5 text-yellow-600 shrink-0 mt-0.5" />
+            <p className="text-[11px] text-text-secondary">
+              This is the only time these are shown in full. Afterwards they
+              live encrypted in the stack's environment.
+            </p>
+          </div>
+
+          {secretEntries.map(([key, value]) => (
+            <div key={key} className="bg-surface-2 rounded-lg px-3 py-2">
+              <div className="text-[11px] text-text-muted font-mono mb-1">
+                {key}
+              </div>
+              <div className="flex items-center gap-2">
+                <code className="text-[11px] text-text-primary break-all flex-1">
+                  {revealed ? value : "•".repeat(24)}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard?.writeText(value)}
+                  className="text-text-muted hover:text-text-primary shrink-0"
+                  title={`Copy ${key}`}
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           ))}
         </div>
       )}
 
       <div className="flex justify-end gap-2 pt-2">
-        {primaryApp ? (
-          <Button onClick={() => onGoToApp(result.projectId, primaryApp.id)}>
-            Open application
-            <ArrowRight className="w-4 h-4" />
-          </Button>
-        ) : (
-          <Button onClick={() => onGoToProject(result.projectId)}>
-            Open project
-            <ArrowRight className="w-4 h-4" />
-          </Button>
-        )}
+        <Button
+          onClick={() => onGoToStack(result.projectId, result.composeServiceId)}
+        >
+          Open stack
+          <ArrowRight className="w-4 h-4" />
+        </Button>
       </div>
     </div>
   );

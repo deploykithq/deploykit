@@ -11,9 +11,11 @@ export interface MetricSample {
   diskUsed: number; // bytes (writable layer + volumes); 0 until the disk scheduler has run
 }
 
+export type ServiceTypeT = "application" | "database" | "compose";
+
 export interface CurrentMetrics extends MetricSample {
   serviceId: string;
-  serviceType: "application" | "database";
+  serviceType: ServiceTypeT;
   serviceName: string;
 }
 

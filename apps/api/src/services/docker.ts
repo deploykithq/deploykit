@@ -1,4 +1,5 @@
 import { docker, ensureNetwork, connectToNetwork } from "../lib/docker";
+import { buildTraefikLabels } from "../lib/traefik";
 
 interface CreateContainerOptsI {
   name: string;
@@ -154,40 +155,9 @@ export class DockerService {
     memoryMb?: number;
   }): Promise<string> {
     const traefikLabels: Record<string, string> = {
-      "traefik.enable": "true",
+      ...buildTraefikLabels(opts.name, opts.domains),
       "deploykit.managed": "true",
     };
-
-    // Generate Traefik labels for each domain
-    for (let i = 0; i < opts.domains.length; i++) {
-      const d = opts.domains[i]!;
-      const routerName = `${opts.name}${i > 0 ? `-${i}` : ""}`;
-
-      traefikLabels[`traefik.http.routers.${routerName}.rule`] =
-        `Host(\`${d.domain}\`)`;
-      traefikLabels[
-        `traefik.http.services.${routerName}.loadbalancer.server.port`
-      ] = String(d.port);
-
-      if (d.https) {
-        traefikLabels[`traefik.http.routers.${routerName}.entrypoints`] =
-          "websecure";
-        traefikLabels[`traefik.http.routers.${routerName}.tls.certresolver`] =
-          "letsencrypt";
-        // HTTP → HTTPS redirect
-        traefikLabels[`traefik.http.routers.${routerName}-http.rule`] =
-          `Host(\`${d.domain}\`)`;
-        traefikLabels[`traefik.http.routers.${routerName}-http.entrypoints`] =
-          "web";
-        traefikLabels[`traefik.http.routers.${routerName}-http.middlewares`] =
-          `${routerName}-redirect`;
-        traefikLabels[
-          `traefik.http.middlewares.${routerName}-redirect.redirectscheme.scheme`
-        ] = "https";
-      } else {
-        traefikLabels[`traefik.http.routers.${routerName}.entrypoints`] = "web";
-      }
-    }
 
     const labels = { ...traefikLabels, ...opts.labels };
     const replicas = Math.max(1, opts.replicas ?? 1);

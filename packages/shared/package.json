@@ -9,6 +9,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "schema:emit": "tsx scripts/emit-template-schema.ts",
     "lint": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
@@ -16,6 +17,8 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
-    "typescript": "^5.7.0"
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.0",
+    "zod-to-json-schema": "^3.25.2"
   }
 }

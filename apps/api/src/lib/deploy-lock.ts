@@ -6,7 +6,10 @@ import { deployments } from "../db/schema/index";
 import { redis } from "./redis";
 
 /**
- * Per-application deploy serialization.
+ * Per-service deploy serialization, for applications and Compose stacks alike.
+ *
+ * The lock is keyed by service id, so a stack and an application can never
+ * collide even though they share this module.
  *
  * Two deploy executions for the same app running concurrently destroy each
  * other's containers (each starts with removeServiceContainers) and can leave
@@ -30,6 +33,22 @@ const hasActiveDeployment = async (applicationId: string): Promise<boolean> => {
   const row = await db.query.deployments.findFirst({
     where: and(
       eq(deployments.applicationId, applicationId),
+      inArray(deployments.status, ACTIVE_STATUSES),
+      gt(deployments.createdAt, cutoff),
+    ),
+    columns: { id: true },
+  });
+  return !!row;
+};
+
+/** Same request-time check for a Compose stack. */
+const hasActiveComposeDeployment = async (
+  composeServiceId: string,
+): Promise<boolean> => {
+  const cutoff = new Date(Date.now() - ACTIVE_WINDOW_MS);
+  const row = await db.query.deployments.findFirst({
+    where: and(
+      eq(deployments.composeServiceId, composeServiceId),
       inArray(deployments.status, ACTIVE_STATUSES),
       gt(deployments.createdAt, cutoff),
     ),
@@ -104,6 +123,7 @@ const releaseDeployLock = async (
 
 export {
   hasActiveDeployment,
+  hasActiveComposeDeployment,
   acquireDeployLock,
   tryAcquireDeployLock,
   releaseDeployLock,

@@ -4,6 +4,7 @@ import { db } from "../db/index";
 import {
   applications,
   databases,
+  composeServices,
   alertRules,
   alertEvents,
 } from "../db/schema/index";
@@ -12,12 +13,16 @@ import {
   pushPending,
   parseDockerStats,
   getDiskUsage,
+  type ServiceTypeT,
 } from "../services/metrics";
+import { DockerService } from "../services/docker";
 import { notify } from "../services/notifier";
 import { getIO } from "../lib/socket";
 import { redis } from "../lib/redis";
 
 const POLL_INTERVAL_MS = 30_000;
+
+const localDocker = new DockerService();
 
 // Key: `alert:cooldown:{ruleId}`  → 1  (TTL = cooldownMinutes)
 // Prevents spamming notifications during sustained high usage.
@@ -67,7 +72,7 @@ function metricLabel(metric: string): string {
 
 async function checkRules(
   serviceId: string,
-  serviceType: "application" | "database",
+  serviceType: ServiceTypeT,
   serviceName: string,
   sample: ReturnType<typeof parseDockerStats>,
 ): Promise<void> {
@@ -156,7 +161,7 @@ async function checkRules(
 async function pollContainer(
   containerId: string,
   serviceId: string,
-  serviceType: "application" | "database",
+  serviceType: ServiceTypeT,
   serviceName: string,
   diskUsed: number,
 ): Promise<void> {
@@ -199,9 +204,96 @@ async function pollContainer(
   }
 }
 
+/**
+ * Sample every container of a Compose stack and store the total as one row.
+ *
+ * `metric_samples` is unique on (service_id, resolution, bucket), so a stack
+ * has to reduce to a single series — and a stack-level total is what the
+ * Monitoring tab wants anyway. CPU, memory and network are summed; the
+ * per-container breakdown stays in the live Socket.IO payload.
+ */
+async function pollComposeStack(
+  stackId: string,
+  stackName: string,
+  diskUsed: number,
+): Promise<void> {
+  try {
+    const containers = await localDocker.listServiceContainers(stackId);
+    const running = containers.filter((c) => c.state === "running");
+    if (running.length === 0) return;
+
+    const perContainer: Array<{
+      name: string;
+      stats: ReturnType<typeof parseDockerStats>;
+    }> = [];
+
+    for (const c of running) {
+      try {
+        const raw = (await docker
+          .getContainer(c.id)
+          .stats({ stream: false })) as any;
+        perContainer.push({ name: c.name, stats: parseDockerStats(raw) });
+      } catch {
+        // A container recreated mid-tick just misses this sample.
+      }
+    }
+    if (perContainer.length === 0) return;
+
+    const total = perContainer.reduce(
+      (acc, { stats }) => ({
+        cpu: acc.cpu + stats.cpu,
+        memUsed: acc.memUsed + stats.memUsed,
+        memTotal: acc.memTotal + stats.memTotal,
+        netRx: acc.netRx + stats.netRx,
+        netTx: acc.netTx + stats.netTx,
+      }),
+      { cpu: 0, memUsed: 0, memTotal: 0, netRx: 0, netTx: 0 },
+    );
+
+    const parsed = {
+      cpu: Math.round(total.cpu * 100) / 100,
+      memUsed: total.memUsed,
+      memTotal: total.memTotal,
+      memPercent:
+        total.memTotal > 0
+          ? Math.round((total.memUsed / total.memTotal) * 10000) / 100
+          : 0,
+      netRx: total.netRx,
+      netTx: total.netTx,
+    };
+    const sample = { ts: Date.now(), ...parsed, diskUsed };
+
+    await storeSample(stackId, sample);
+    await pushPending(stackId, sample);
+
+    try {
+      getIO()
+        .to(`metrics:${stackId}`)
+        .emit("metrics:update", {
+          serviceId: stackId,
+          serviceType: "compose",
+          serviceName: stackName,
+          ...sample,
+          containers: perContainer.map(({ name, stats }) => ({
+            name,
+            cpu: stats.cpu,
+            memUsed: stats.memUsed,
+            memPercent: stats.memPercent,
+          })),
+        });
+    } catch {
+      /* socket not ready */
+    }
+
+    await checkRules(stackId, "compose", stackName, parsed);
+  } catch (err: any) {
+    console.error(`[metrics-scheduler] pollComposeStack ${stackId}:`, err.message);
+  }
+}
+
 async function tick(): Promise<void> {
   try {
-    const [apps, dbs] = await Promise.all([
+    const [apps, dbs, stacks] = await Promise.all([
       db.query.applications.findMany({
         where: eq(applications.status, "running"),
         columns: { id: true, name: true, containerId: true },
@@ -210,6 +302,10 @@ async function tick(): Promise<void> {
         where: eq(databases.status, "running"),
         columns: { id: true, name: true, containerId: true },
       }),
+      db.query.composeServices.findMany({
+        where: eq(composeServices.status, "running"),
+        columns: { id: true, name: true },
+      }),
     ]);
 
     // One Redis round-trip for the whole tick; the disk scheduler refreshes
@@ -217,6 +313,7 @@ async function tick(): Promise<void> {
     const diskById = await getDiskUsage([
       ...apps.map((a) => a.id),
       ...dbs.map((d) => d.id),
+      ...stacks.map((s) => s.id),
     ]);
 
     const tasks: Promise<void>[] = [];
@@ -247,6 +344,12 @@ async function tick(): Promise<void> {
           ),
         );
       }
+    }
+
+    for (const stack of stacks) {
+      tasks.push(
+        pollComposeStack(stack.id, stack.name, diskById.get(stack.id) ?? 0),
+      );
     }
 
     // Concurrent but isolated — one failure doesn't block others

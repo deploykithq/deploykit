@@ -6,6 +6,7 @@ import {
   applications,
   databases,
   deployments,
+  composeServices,
 } from "../db/schema/index";
 import { db } from "../db/index";
 
@@ -39,8 +40,8 @@ const verifySocketAuth = async (
 };
 
 /**
- * Resolve the owning project of an application or database, referenced
- * either by its own UUID (serviceId) or by its Docker container id.
+ * Resolve the owning project of an application, database or Compose stack,
+ * referenced either by its own UUID (serviceId) or by its Docker container id.
  */
 const findProjectIdByServiceRef = async (
   ref: string,
@@ -61,10 +62,26 @@ const findProjectIdByServiceRef = async (
       : eq(databases.containerId, ref),
     columns: { projectId: true },
   });
-  return database?.projectId ?? null;
+  if (database) return database.projectId;
+
+  // A Compose stack owns many containers and stores none of their ids, so it
+  // is only ever addressed by its own UUID. Its containers are reachable
+  // because they carry the `deploykit.service=<stack id>` label.
+  if (!isUuid) return null;
+  const stack = await db.query.composeServices.findFirst({
+    where: eq(composeServices.id, ref),
+    columns: { projectId: true },
+  });
+  return stack?.projectId ?? null;
 };
 
-/** Can this user view the project that owns the given deployment? */
+/**
+ * Can this user view the project that owns the given deployment?
+ *
+ * A deployment belongs to either an application or a Compose stack (never
+ * both), so resolve whichever owner it actually has. Treating a stack
+ * deployment as an application one would deny its own project's members.
+ */
 const canViewDeployment = async (
   user: UserT,
   deploymentId: string,
@@ -73,17 +90,29 @@ const canViewDeployment = async (
 
   const deployment = await db.query.deployments.findFirst({
     where: eq(deployments.id, deploymentId),
-    columns: { applicationId: true },
+    columns: { applicationId: true, composeServiceId: true },
   });
   if (!deployment) return false;
 
-  const app = await db.query.applications.findFirst({
-    where: eq(applications.id, deployment.applicationId),
-    columns: { projectId: true },
-  });
-  if (!app) return false;
+  let projectId: string | undefined;
 
-  return (await getProjectRole(user, app.projectId)) !== null;
+  if (deployment.applicationId) {
+    const app = await db.query.applications.findFirst({
+      where: eq(applications.id, deployment.applicationId),
+      columns: { projectId: true },
+    });
+    projectId = app?.projectId;
+  } else if (deployment.composeServiceId) {
+    const stack = await db.query.composeServices.findFirst({
+      where: eq(composeServices.id, deployment.composeServiceId),
+      columns: { projectId: true },
+    });
+    projectId = stack?.projectId;
+  }
+
+  if (!projectId) return false;
+
+  return (await getProjectRole(user, projectId)) !== null;
 };
 
 /**

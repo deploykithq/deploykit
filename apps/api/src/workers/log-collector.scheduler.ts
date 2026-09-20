@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "../db/index";
-import { applications, databases } from "../db/schema/index";
+import { applications, databases, composeServices } from "../db/schema/index";
+import { DockerService } from "../services/docker";
 import {
   ensureLogStream,
   stopLogStream,
@@ -22,9 +23,13 @@ import {
 const TICK_INTERVAL_MS = 15_000;
 const FLUSH_INTERVAL_MS = 2_000;
 
+const localDocker = new DockerService();
+
+type ServiceTypeT = "application" | "database" | "compose";
+
 async function tick(): Promise<void> {
   try {
-    const [apps, dbs] = await Promise.all([
+    const [apps, dbs, stacks] = await Promise.all([
       db.query.applications.findMany({
         where: eq(applications.status, "running"),
         columns: { id: true, containerId: true },
@@ -33,14 +38,35 @@ async function tick(): Promise<void> {
         where: eq(databases.status, "running"),
         columns: { id: true, containerId: true },
       }),
+      db.query.composeServices.findMany({
+        where: eq(composeServices.status, "running"),
+        columns: { id: true },
+      }),
     ]);
 
-    const running = new Map<string, { id: string; type: "application" | "database" }>();
+    const running = new Map<string, { id: string; type: ServiceTypeT }>();
     for (const app of apps) {
       if (app.containerId) running.set(app.containerId, { id: app.id, type: "application" });
     }
     for (const d of dbs) {
       if (d.containerId) running.set(d.containerId, { id: d.id, type: "database" });
+    }
+
+    // A stack stores no container ids — it owns several, and Compose recreates
+    // them freely. They are found by the label the transformer injects, so the
+    // set stays correct across recreations without any bookkeeping here.
+    for (const stack of stacks) {
+      let containers: Array<{ id: string; state: string }>;
+      try {
+        containers = await localDocker.listServiceContainers(stack.id);
+      } catch {
+        continue; // Remote stacks and transient daemon errors: skip this tick.
+      }
+      for (const container of containers) {
+        if (container.state === "running") {
+          running.set(container.id, { id: stack.id, type: "compose" });
+        }
+      }
     }
 
     // Ensure a persisting stream for every running container.

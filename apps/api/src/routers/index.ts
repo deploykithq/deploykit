@@ -6,6 +6,7 @@ import { auditRouter } from "./audit";
 import { serverRouter } from "./server";
 import { sshKeyRouter } from "./ssh-key";
 import { statusRouter } from "./status";
+import { composeRouter } from "./compose";
 import { projectRouter } from "./project";
 import { metricsRouter } from "./metrics";
 import { templateRouter } from "./template";
@@ -29,6 +30,7 @@ export const appRouter = router({
   dashboard: dashboardRouter,
   projectMember: projectMemberRouter,
   template: templateRouter,
+  compose: composeRouter,
   status: statusRouter,
   logs: logsRouter,
 });

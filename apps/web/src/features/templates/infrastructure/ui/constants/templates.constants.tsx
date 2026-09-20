@@ -1,54 +1,13 @@
-import {
-  Database,
-  Workflow,
-  Activity,
-  BarChart3,
-  Boxes,
-  Layers,
-  Package,
-  Mail,
-  KeyRound,
-  Rss,
-  GitBranch,
-  Gauge,
-  StickyNote,
-  BellRing,
-  Code,
-  type LucideIcon,
-} from "lucide-react";
-import type { TemplateCategory } from "@deploykit/shared";
+import { Package } from "lucide-react";
 
-const ICONS: Record<string, LucideIcon> = {
-  Database,
-  Workflow,
-  Activity,
-  BarChart3,
-  Boxes,
-  Layers,
-  Package,
-  Mail,
-  KeyRound,
-  Rss,
-  GitBranch,
-  Gauge,
-  StickyNote,
-  BellRing,
-  Code,
-};
+/**
+ * Icono por defecto cuando el blueprint no trae logo, o cuando el archivo no
+ * carga (el registro remoto puede estar caído y las tarjetas deben seguir
+ * siendo legibles).
+ */
+const FallbackTemplateIcon = Package;
 
-export const getTemplateIcon = (name: string): LucideIcon =>
-  ICONS[name] ?? Package;
+/** Cuántas etiquetas se muestran como filtros antes de plegar el resto. */
+const VISIBLE_TAG_FILTERS = 12;
 
-export const CATEGORY_LABELS: Record<TemplateCategory, string> = {
-  database: "Databases",
-  selfhosted: "Self-hosted apps",
-  stack: "Stacks",
-  app: "Starter apps",
-};
-
-export const CATEGORY_ORDER: TemplateCategory[] = [
-  "stack",
-  "selfhosted",
-  "app",
-  "database",
-];
+export { FallbackTemplateIcon, VISIBLE_TAG_FILTERS };

@@ -9,6 +9,7 @@ import {
 import { relations } from "drizzle-orm";
 
 import { applications } from "./applications";
+import { composeServices } from "./compose-services";
 
 interface ScanSummaryI {
   critical: number;
@@ -33,11 +34,23 @@ interface ScanResultsI {
   scannedAt: number; // epoch ms
 }
 
+/**
+ * One deployment of either an application or a Compose stack.
+ *
+ * Exactly one of `applicationId` / `composeServiceId` is set. Sharing the table
+ * keeps one deployment history, one live-log pipeline and one UI for both kinds
+ * of service; the cost is that `applicationId` is nullable, so every read of it
+ * has to say which kind it expects.
+ */
 const deployments = pgTable("deployments", {
   id: uuid("id").defaultRandom().primaryKey(),
-  applicationId: uuid("application_id")
-    .references(() => applications.id, { onDelete: "cascade" })
-    .notNull(),
+  applicationId: uuid("application_id").references(() => applications.id, {
+    onDelete: "cascade",
+  }),
+  composeServiceId: uuid("compose_service_id").references(
+    () => composeServices.id,
+    { onDelete: "cascade" },
+  ),
   // Git info
   commitHash: varchar("commit_hash", { length: 40 }),
   commitMessage: text("commit_message"),
@@ -62,6 +75,10 @@ const deploymentRelations = relations(deployments, ({ one }) => ({
   application: one(applications, {
     fields: [deployments.applicationId],
     references: [applications.id],
+  }),
+  composeService: one(composeServices, {
+    fields: [deployments.composeServiceId],
+    references: [composeServices.id],
   }),
 }));
 

@@ -1,7 +1,12 @@
 import { eq, and } from "drizzle-orm";
 
 import { db } from "../db/index";
-import { projectMembers, applications, databases } from "../db/schema/index";
+import {
+  projectMembers,
+  applications,
+  databases,
+  composeServices,
+} from "../db/schema/index";
 
 import type { UserT } from "../db/schema/index";
 import type { UserRole } from "@deploykit/shared";
@@ -74,6 +79,22 @@ const getProjectRoleByDbId = async (
   return getProjectRole(user, database.projectId);
 };
 
+// Resolve role from a Compose stack ID (looks up the stack's projectId first).
+const getProjectRoleByComposeId = async (
+  user: UserT,
+  composeServiceId: string,
+): Promise<UserRole | null> => {
+  if (user.role === "admin") return "admin";
+
+  const stack = await db.query.composeServices.findFirst({
+    where: eq(composeServices.id, composeServiceId),
+    columns: { projectId: true },
+  });
+
+  if (!stack) return null;
+  return getProjectRole(user, stack.projectId);
+};
+
 // IDs of all projects the user can see (all projects for global admins, member projects otherwise).
 const getAccessibleProjectIds = async (user: UserT): Promise<string[]> => {
   const memberships = await db.query.projectMembers.findMany({
@@ -105,6 +126,7 @@ export {
   getProjectRole,
   getProjectRoleByAppId,
   getProjectRoleByDbId,
+  getProjectRoleByComposeId,
   getAccessibleProjectIds,
   canView,
   canOperate,
