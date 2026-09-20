@@ -146,7 +146,41 @@ production template.
 
 ### Database migrations
 
-Schema lives in `apps/api/src/db/schema/`. After changing schema files, run `pnpm db:generate` to create a migration, then `pnpm db:migrate` to apply it. Drizzle config is at `apps/api/drizzle.config.ts`.
+Schema lives in `apps/api/src/db/schema/`. Migrations are **hand-written SQL** in
+`apps/api/src/db/migrations/`, applied by `src/db/migrate.ts` (`pnpm db:migrate`).
+Drizzle config is at `apps/api/drizzle.config.ts`.
+
+**Never run `pnpm db:generate`.** The drizzle-kit snapshots under `meta/` were only
+ever tracked up to `0001_snapshot.json`, so `generate` diffs the schema against a
+stale baseline and emits a migration that recreates tables which already exist —
+and it prompts interactively for every ambiguous rename.
+
+To add a change, write `NNNN_description.sql` by hand plus a matching entry in
+`meta/_journal.json` (`tag` = filename without `.sql`). Two rules, both load-bearing:
+
+1. **Every statement must be idempotent** — `CREATE TABLE IF NOT EXISTS`,
+   `ADD COLUMN IF NOT EXISTS`, `DROP ... IF EXISTS`, and foreign keys wrapped in
+   `DO $$ ... EXCEPTION WHEN duplicate_object THEN NULL; END $$`. The whole folder
+   is replayed from `0000` against databases that already have the schema (an
+   install that lost its bookkeeping, or any install after a journal renumbering),
+   and a single bare `CREATE TABLE` aborts the entire run with 42P07.
+2. **`when` must be strictly greater than every entry before it.** Drizzle applies
+   an entry only when its `when` exceeds the newest `created_at` in
+   `drizzle.__drizzle_migrations` (see `migrate` in `drizzle-orm/pg-core/dialect.js`);
+   `idx` and `tag` are never consulted. A lower or equal `when` is skipped
+   **silently** while `migrate()` still prints "Migrations complete". A `when` far
+   in the future is just as bad: it gates out everything written afterwards.
+
+Every pending migration runs in one transaction, so a failure rolls back the
+bookkeeping as well and the next boot starts over from `0000`. `entrypoint.sh`
+therefore fails loudly instead of falling back to `drizzle-kit push`: push records
+nothing in the migrations table, hangs on rename prompts when there is no TTY, and
+drops columns the schema no longer declares (including `servers.ssh_key_content`,
+which holds encrypted keys until the backfill moves them). A database whose
+bookkeeping was lost is repaired with `scripts/repair-migration-state.sh`.
+
+Data migrations that need application-level crypto cannot be SQL — they live in
+`db/backfill/` and run from `migrate.ts` after `migrate()` returns.
 
 ### Production
 
