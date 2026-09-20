@@ -71,14 +71,28 @@ fails, edit the title and the check re-runs on its own, no need to push again.
 
 ### Database Changes
 
-If you modify files in `apps/api/src/db/schema/`:
+Migrations are hand-written SQL, not generated. **Do not run `pnpm db:generate`**:
+the drizzle-kit snapshots under `meta/` are only tracked up to `0001_snapshot.json`,
+so it diffs against a stale baseline and emits a migration that recreates tables
+which already exist.
 
-```bash
-pnpm db:generate   # Creates a new migration file
-pnpm db:migrate    # Applies the migration
-```
+If you modify files in `apps/api/src/db/schema/`, add the matching migration by hand:
 
-Always include generated migration files in your PR.
+1. Write `apps/api/src/db/migrations/NNNN_short_description.sql`. **Every statement
+   must be idempotent** (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`,
+   `DROP ... IF EXISTS`, foreign keys inside
+   `DO $$ ... EXCEPTION WHEN duplicate_object THEN NULL; END $$`) — the folder is
+   replayed from the first file against databases that already have the schema.
+2. Add an entry to `meta/_journal.json` with `tag` = the filename without `.sql`
+   and a `when` **strictly greater than every entry before it**. Drizzle decides
+   what to run by comparing `when` against the newest applied migration, so an
+   equal or lower value is skipped in silence — including across sibling PRs, so
+   check `master` before picking yours.
+3. Apply it with `pnpm db:migrate`, then confirm the schema really changed
+   (`information_schema.columns`, `\d <table>`) rather than trusting the
+   "Migrations complete" message.
+
+Always include the migration file and the journal entry in your PR.
 
 ## Submitting a Pull Request
 

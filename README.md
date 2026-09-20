@@ -58,6 +58,14 @@ The CLI will:
 sudo deploykit update
 ```
 
+Database migrations run at startup. If the API container fails to start with
+`relation "users" already exists`, the database was created by an old fallback
+that left no migration bookkeeping; repair it once with
+
+```bash
+sudo scripts/repair-migration-state.sh
+```
+
 ### Other commands
 
 ```bash
@@ -126,7 +134,6 @@ cp .env.example .env
 
 ```bash
 docker compose up -d          # Start PostgreSQL, Redis, Traefik
-pnpm db:generate              # Generate migration files
 pnpm db:migrate               # Run migrations
 pnpm dev                      # Start API + Web dev servers
 ```
@@ -145,8 +152,7 @@ pnpm dev                      # Start API + Web dev servers
 | `pnpm dev:api` | Start only the API server |
 | `pnpm dev:web` | Start only the web dashboard |
 | `pnpm build` | Build all packages for production |
-| `pnpm db:generate` | Generate Drizzle ORM migration files |
-| `pnpm db:migrate` | Run pending database migrations |
+| `pnpm db:migrate` | Apply pending database migrations (hand-written SQL, see CONTRIBUTING.md) |
 | `pnpm db:studio` | Open Drizzle Studio (database GUI) |
 | `pnpm lint` | Run type checking across all packages |
 
