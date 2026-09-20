@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/deploykithq/deploykit/compare/v0.3.0...v0.3.1) (2026-09-20)
+
+
+### Bug Fixes
+
+* solved a problem with migrations ([#12](https://github.com/deploykithq/deploykit/issues/12)) ([266569f](https://github.com/deploykithq/deploykit/commit/266569f7d9c80cbdc55ab106ada7801d558257b6))
+
 ## [0.3.0](https://github.com/deploykithq/deploykit/compare/v0.2.0...v0.3.0) (2026-09-20)
 
 
