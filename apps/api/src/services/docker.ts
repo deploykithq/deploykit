@@ -32,6 +32,31 @@ export interface OneOffResultI {
   timedOut: boolean;
 }
 
+/**
+ * Turn a failure to start a one-off into something worth showing a user.
+ *
+ * Every one-off runs `/bin/sh -lc`, so an image without a shell — distroless,
+ * scratch, many Go images — cannot run one at all. Docker reports that as an
+ * OCI runtime error about "unable to start container process", which says
+ * nothing actionable. Anything else is passed through unchanged.
+ */
+export const explainStartFailure = (err: unknown, image: string): string => {
+  const raw = String((err as Error)?.message ?? err);
+  if (
+    /OCI runtime create failed|executable file not found|no such file or directory|exec format error/i.test(
+      raw,
+    )
+  ) {
+    return (
+      `Could not run a command in "${image}": the image appears to have no /bin/sh. ` +
+      `DeployKit runs every command through a shell, so the image needs one — ` +
+      `an Alpine- or Debian-based image has it, a distroless or scratch image does not. ` +
+      `(Docker said: ${raw})`
+    );
+  }
+  return raw;
+};
+
 interface ContainerStatsI {
   cpu: number;
   memory: { used: number; total: number; percent: number };
@@ -563,7 +588,17 @@ export class DockerService {
     stdout.on("data", (c: Buffer) => onLog(c.toString("utf8")));
     stderr.on("data", (c: Buffer) => onLog(c.toString("utf8")));
 
-    await container.start();
+    try {
+      await container.start();
+    } catch (err) {
+      // start() is outside the try/finally below on purpose: the container
+      // exists but never ran, so it has to be cleaned up here or it is left
+      // behind in "created" state — holding its name against a retry.
+      stdout.destroy();
+      stderr.destroy();
+      await container.remove({ force: true }).catch(() => {});
+      throw new Error(explainStartFailure(err, spec.image));
+    }
 
     let timedOut = false;
     const timer = setTimeout(() => {

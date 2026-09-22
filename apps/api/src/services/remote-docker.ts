@@ -3,6 +3,8 @@ import { injectToken, sanitizeGitRef } from "./git";
 import { shellEscape } from "../lib/shell";
 import { buildTraefikLabels } from "../lib/traefik";
 
+import { explainStartFailure } from "./docker";
+
 import type { OneOffSpecI } from "./task-runner";
 import type { OneOffResultI } from "./docker";
 
@@ -574,7 +576,13 @@ export class RemoteDockerService {
     }
 
     const combined = `${result.stdout}${result.stderr}`;
-    if (combined) onLog(combined);
+    // `docker run` exits 125/126/127 when the container could not be started
+    // at all; say why in the same words the local transport uses.
+    if (result.code !== 0 && [125, 126, 127].includes(result.code)) {
+      onLog(`${explainStartFailure(new Error(combined), spec.image)}\n`);
+    } else if (combined) {
+      onLog(combined);
+    }
 
     return { exitCode: result.code, containerId: null, timedOut };
   }
