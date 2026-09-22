@@ -7,10 +7,11 @@ import {
   databases,
   deployments,
   composeServices,
+  taskRuns,
 } from "../db/schema/index";
 import { db } from "../db/index";
 
-import { getProjectRole } from "./permissions";
+import { getProjectRole, canViewSecrets } from "./permissions";
 
 import type { UserT } from "../db/schema/index";
 
@@ -129,4 +130,59 @@ const canViewService = async (user: UserT, ref: string): Promise<boolean> => {
   return (await getProjectRole(user, projectId)) !== null;
 };
 
-export { verifySocketAuth, canViewDeployment, canViewService };
+/**
+ * Can this user watch a task run's live output?
+ *
+ * Gated on canViewSecrets, not plain membership: a migration can print a
+ * connection string, so the live stream is the same class of data as the
+ * stored output and as env vars.
+ */
+const canViewTaskRun = async (user: UserT, runId: string): Promise<boolean> => {
+  if (typeof runId !== "string" || runId.length === 0 || runId.length > 100) {
+    return false;
+  }
+
+  const run = await db.query.taskRuns.findFirst({
+    where: eq(taskRuns.id, runId),
+    columns: {
+      applicationId: true,
+      composeServiceId: true,
+      databaseId: true,
+    },
+  });
+  if (!run) return false;
+
+  let projectId: string | undefined;
+  if (run.applicationId) {
+    projectId = (
+      await db.query.applications.findFirst({
+        where: eq(applications.id, run.applicationId),
+        columns: { projectId: true },
+      })
+    )?.projectId;
+  } else if (run.composeServiceId) {
+    projectId = (
+      await db.query.composeServices.findFirst({
+        where: eq(composeServices.id, run.composeServiceId),
+        columns: { projectId: true },
+      })
+    )?.projectId;
+  } else if (run.databaseId) {
+    projectId = (
+      await db.query.databases.findFirst({
+        where: eq(databases.id, run.databaseId),
+        columns: { projectId: true },
+      })
+    )?.projectId;
+  }
+  if (!projectId) return false;
+
+  return canViewSecrets(await getProjectRole(user, projectId));
+};
+
+export {
+  verifySocketAuth,
+  canViewDeployment,
+  canViewService,
+  canViewTaskRun,
+};
