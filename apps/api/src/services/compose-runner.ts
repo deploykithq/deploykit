@@ -6,6 +6,8 @@ import { platform, tmpdir } from "os";
 import { shellEscape } from "../lib/shell";
 import { sshExec, type SSHConnectionOpts } from "./ssh";
 
+import type { OneOffResultI } from "./docker";
+
 /**
  * Runs `docker compose` for a stack, locally or over SSH.
  *
@@ -57,6 +59,15 @@ interface RunOptsI {
   onLog?: (line: string) => void;
 }
 
+interface OneOffRunOptsI {
+  stackId: string;
+  stackName: string;
+  serviceName: string;
+  command: string;
+  timeoutMs: number;
+  onLog: (chunk: string) => void;
+}
+
 interface UpOptsI extends RunOptsI {
   forceRecreate?: boolean;
   pull?: boolean;
@@ -74,6 +85,11 @@ interface ComposeRunnerI {
   start(opts: RunOptsI): Promise<void>;
   restart(opts: RunOptsI): Promise<void>;
   down(opts: DownOptsI): Promise<void>;
+  /**
+   * Run a one-off command in a stack service: Compose's own one-off primitive,
+   * so env, volumes and networks come from the stack definition.
+   */
+  runOneOff(opts: OneOffRunOptsI): Promise<OneOffResultI>;
   /** Delete the stack directory once nothing references it any more. */
   removeStack(stackId: string): Promise<void>;
   /** Whether the `docker compose` plugin is available. */
@@ -161,6 +177,44 @@ const run = (
     });
   });
 
+/**
+ * Like `run`, but resolves with the exit code instead of rejecting on a
+ * non-zero one — a failed user command is data, not an exception.
+ */
+const runCapture = (
+  command: string,
+  args: string[],
+  opts: { cwd?: string; onLog?: (line: string) => void; timeoutMs?: number },
+): Promise<{ code: number; timedOut: boolean }> =>
+  new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: opts.cwd,
+      shell: false,
+      windowsHide: true,
+    });
+
+    let timedOut = false;
+    const forward = (chunk: Buffer) => opts.onLog?.(chunk.toString());
+    child.stdout.on("data", forward);
+    child.stderr.on("data", forward);
+
+    const timer = opts.timeoutMs
+      ? setTimeout(() => {
+          timedOut = true;
+          child.kill("SIGKILL");
+        }, opts.timeoutMs)
+      : undefined;
+
+    child.on("error", (err) => {
+      if (timer) clearTimeout(timer);
+      reject(err);
+    });
+    child.on("close", (code) => {
+      if (timer) clearTimeout(timer);
+      resolve({ code: code ?? -1, timedOut });
+    });
+  });
+
 class LocalComposeRunner implements ComposeRunnerI {
   private composeArgs(opts: RunOptsI, extra: string[]): string[] {
     const dir = stackDir(opts.stackId);
@@ -239,6 +293,32 @@ class LocalComposeRunner implements ComposeRunnerI {
     const extra = ["down", "--remove-orphans"];
     if (opts.removeVolumes) extra.push("--volumes");
     return this.exec(opts, extra, 10 * 60_000);
+  }
+
+  async runOneOff(opts: OneOffRunOptsI): Promise<OneOffResultI> {
+    // -T disables TTY allocation: there is no terminal here, and without it
+    // Compose fails with "the input device is not a TTY".
+    // --no-deps keeps the run from starting the rest of the stack; a deployed
+    // stack already has its database up.
+    const args = this.composeArgs(
+      { stackId: opts.stackId, stackName: opts.stackName },
+      [
+        "run",
+        "--rm",
+        "--no-deps",
+        "-T",
+        opts.serviceName,
+        "/bin/sh",
+        "-lc",
+        opts.command,
+      ],
+    );
+    const { code, timedOut } = await runCapture("docker", args, {
+      cwd: stackDir(opts.stackId),
+      onLog: opts.onLog,
+      timeoutMs: opts.timeoutMs,
+    });
+    return { exitCode: code, containerId: null, timedOut };
   }
 
   async removeStack(stackId: string): Promise<void> {
@@ -350,6 +430,25 @@ class RemoteComposeRunner implements ComposeRunnerI {
     return this.exec(this.composeCmd(opts, extra), 10 * 60_000, opts.onLog);
   }
 
+  async runOneOff(opts: OneOffRunOptsI): Promise<OneOffResultI> {
+    const cmd = this.composeCmd(
+      { stackId: opts.stackId, stackName: opts.stackName },
+      `run --rm --no-deps -T ${shellEscape(opts.serviceName)} /bin/sh -lc ${shellEscape(opts.command)}`,
+    );
+
+    try {
+      const result = await sshExec(this.ssh, cmd, opts.timeoutMs);
+      const combined = `${result.stdout}${result.stderr}`;
+      if (combined) opts.onLog(combined);
+      return { exitCode: result.code, containerId: null, timedOut: false };
+    } catch (err: any) {
+      if (/timed out/i.test(err?.message ?? "")) {
+        return { exitCode: -1, containerId: null, timedOut: true };
+      }
+      throw err;
+    }
+  }
+
   async removeStack(stackId: string): Promise<void> {
     await this.exec(
       `${this.sudo}rm -rf ${shellEscape(stackDir(stackId))}`,
@@ -372,6 +471,7 @@ export {
   type ComposeRunnerI,
   type StackFilesI,
   type RunOptsI,
+  type OneOffRunOptsI,
   type UpOptsI,
   type DownOptsI,
 };

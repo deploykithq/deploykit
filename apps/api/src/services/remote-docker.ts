@@ -3,6 +3,9 @@ import { injectToken, sanitizeGitRef } from "./git";
 import { shellEscape } from "../lib/shell";
 import { buildTraefikLabels } from "../lib/traefik";
 
+import type { OneOffSpecI } from "./task-runner";
+import type { OneOffResultI } from "./docker";
+
 /**
  * Executes Docker commands on a remote server via SSH.
  * Mirrors the local DockerService interface.
@@ -514,6 +517,66 @@ export class RemoteDockerService {
     await this.exec(
       `printf '%s' ${shellEscape(lines)} > ${shellEscape(dirPath)}/.env`,
     );
+  }
+
+  /**
+   * Same contract as DockerService.runOneOff, over SSH.
+   *
+   * Env is written to a temp file and passed with --env-file, never as `-e`
+   * flags, so secrets stay out of the remote process list. Output is buffered
+   * and delivered when the command finishes — SSH exec here is not streaming,
+   * exactly as remote image builds already behave.
+   */
+  async runOneOff(
+    spec: OneOffSpecI,
+    onLog: (chunk: string) => void,
+  ): Promise<OneOffResultI> {
+    const envPath = `/tmp/${spec.name}.env`;
+    const envLines = spec.env.join("\n");
+
+    await this.exec(
+      `printf '%s' ${shellEscape(envLines)} > ${shellEscape(envPath)} && chmod 600 ${shellEscape(envPath)}`,
+    );
+
+    const flags = [
+      "--rm",
+      "--restart no",
+      `--name ${shellEscape(spec.name)}`,
+      `--network ${shellEscape(spec.networkName)}`,
+      `--env-file ${shellEscape(envPath)}`,
+      ...Object.entries(spec.labels).map(
+        ([k, v]) => `--label ${shellEscape(`${k}=${v}`)}`,
+      ),
+      ...(spec.volumes ?? []).map((v) => `-v ${shellEscape(v)}`),
+      ...(spec.cpuMillicores ? [`--cpus ${spec.cpuMillicores / 1000}`] : []),
+      ...(spec.memoryMb ? [`--memory ${spec.memoryMb}m`] : []),
+    ].join(" ");
+
+    const cmd =
+      this.docker(
+        `run ${flags} ${shellEscape(spec.image)} ${spec.cmd.map(shellEscape).join(" ")}`,
+      ) + `; __code=$?; rm -f ${shellEscape(envPath)}; exit $__code`;
+
+    let timedOut = false;
+    let result;
+    try {
+      result = await this.exec(cmd, spec.timeoutMs);
+    } catch (err: any) {
+      // sshExec rejects with "SSH command timed out"; kill the container so it
+      // does not outlive the run, then report the timeout.
+      timedOut = /timed out/i.test(err?.message ?? "");
+      if (!timedOut) throw err;
+      await this.exec(
+        `${this.docker(`kill ${shellEscape(spec.name)}`)} || true; rm -f ${shellEscape(envPath)}`,
+        30_000,
+      ).catch(() => {});
+      return { exitCode: -1, containerId: null, timedOut: true };
+    }
+
+    const combined = `${result.stdout}${result.stderr}`;
+    if (combined) onLog(combined);
+
+    return { exitCode: result.code, containerId: null, timedOut };
   }
 }
 
