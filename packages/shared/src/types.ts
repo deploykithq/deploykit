@@ -235,6 +235,7 @@ export const NotificationEvent = z.enum([
   "backup.completed",
   "health_check.failed",
   "alert.fired",
+  "task.failed",
 ]);
 export type NotificationEvent = z.infer<typeof NotificationEvent>;
 

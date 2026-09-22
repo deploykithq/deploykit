@@ -122,6 +122,68 @@ Deployments are shared: `deployments.application_id` is nullable and
 `deployments.compose_service_id` is its counterpart, with a CHECK that exactly one is
 set. Any code reading `application_id` must handle a stack deployment.
 
+### Scheduled tasks & one-off commands
+
+A **task** is a named command on exactly one service, with an **optional** cron:
+`scheduled_tasks.cron IS NULL` means a saved command that only ever runs when
+somebody presses Run. `scheduled_tasks` and `task_runs` both carry the
+polymorphic owner columns `application_id` / `compose_service_id` /
+`database_id` under a CHECK that exactly one is set — the same shape
+`deployments` uses — plus `service_name`, which a stack task must have and no
+other kind may.
+
+`task_runs` keeps its own owner columns *as well as* `task_id`, so an ad-hoc
+run (which has no task) is still attributable to a service, and history
+survives the deletion of the task that produced it (`task_id` is SET NULL,
+`task_name` and `command` are snapshots). So is `timeout_seconds`: editing a
+task must not retime a run already in flight. `services/task-runner.ts` keeps
+the 50 newest runs per task, or per service for ad-hoc runs.
+
+**Every run is a new container from the service's image** — never a `docker
+exec` into the live one — so a command works with the app stopped, keeps a long
+job off the container serving traffic, and needs no choice between replicas.
+Applications and databases go through `runOneOff` (dockerode locally, `docker
+run --rm --env-file` over SSH); stack services go through `docker compose run
+--rm --no-deps -T`. A database command runs in the *client* image for its type
+with `DK_DB_*` exported and the tool's own password variable (`PGPASSWORD`,
+`MYSQL_PWD`, `REDISCLI_AUTH`) set, and the data volume is deliberately not
+mounted.
+
+**Three invariants to check on any change here.** A one-off container (a)
+never carries the `deploykit.service` label — that label is how
+`listServiceContainers`, the autoscaler, the metrics scheduler and the log
+collector find a service's replicas, so a one-off wearing it would be scaled or
+scraped; (b) never publishes ports, which would collide with the app's own host
+port; (c) always sets `RestartPolicy: no`, since `createAndStart` defaults to
+`unless-stopped` and a finished command must not be restarted. Secrets never
+travel as `-e KEY=VALUE`: locally env goes through the dockerode API, remotely
+through a 0600 temp file passed with `--env-file` and deleted afterwards.
+
+**All cron in DeployKit is BullMQ job schedulers** (`lib/task-scheduler.ts`),
+database backups included — there is no polling scheduler left.
+`reconcileSchedules()` runs at boot and makes Redis match the DB, but every
+mutation that changes a schedule must call `upsertTaskSchedule` /
+`upsertBackupSchedule` itself, or the change only lands after a restart.
+Scheduler ids are namespaced `task:<id>` / `backup:<id>` so the two can be
+reconciled independently. Backups intentionally pass no `tz`, preserving the
+process-local semantics the old matcher had. Validation uses `lib/cron.ts`,
+which wraps **cron-parser 4.x — the exact version BullMQ resolves** — so a
+pattern the API accepts is one the scheduler will really run; it is imported by
+default and destructured, because its named exports are not statically
+detectable under Node ESM.
+
+**Authorization: both layers, always.** Defining or running a command is
+`operatorProcedure` **and** project `canOperate` — running an arbitrary command
+in a container is the web terminal in power, and `services/terminal.ts` gates
+that on the *global* role, so gating only on the project role would hand
+arbitrary execution to a global viewer who is operator of one project. Run
+metadata is `canView`; run **output** is `canViewSecrets`, because a migration
+can print a connection string — which is also why the Socket.IO room
+`task-run:<id>` is gated on `canViewTaskRun`, not plain membership.
+
+Only local runs stream line by line; a remote (SSH) run delivers its output
+when the command finishes, exactly as remote image builds already behave.
+
 ### Frontend structure (`apps/web/src/`)
 
 - **`router.tsx`** — Route definitions with lazy loading and auth guards via `beforeLoad`

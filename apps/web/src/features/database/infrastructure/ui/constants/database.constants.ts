@@ -1,4 +1,10 @@
-import { Shield, HardDrive, BarChart3, ScrollText } from "lucide-react";
+import {
+  Shield,
+  HardDrive,
+  BarChart3,
+  ScrollText,
+  CalendarClock,
+} from "lucide-react";
 
 import { TabT } from "@database/infrastructure/ui/interfaces/database.interfaces";
 
@@ -15,6 +21,7 @@ const TABS: { id: TabT; label: string; icon: React.ElementType }[] = [
   { id: "backups", label: "Backups", icon: HardDrive },
   { id: "monitoring", label: "Monitoring", icon: BarChart3 },
   { id: "logs", label: "Logs", icon: ScrollText },
+  { id: "tasks", label: "Tasks", icon: CalendarClock },
 ];
 
 const CRON_PRESETS = [

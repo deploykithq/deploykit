@@ -7,6 +7,7 @@ type TabT =
   | "terminal"
   | "monitoring"
   | "security"
+  | "tasks"
   | "previews";
 
 type LogModeT = "live" | "history";

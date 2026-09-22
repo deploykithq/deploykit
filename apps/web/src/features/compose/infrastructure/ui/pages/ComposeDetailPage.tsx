@@ -23,6 +23,8 @@ import {
   MonitoringTab,
 } from "@compose/infrastructure/ui/components";
 
+import { TasksTab } from "@task/infrastructure/ui/components";
+
 const TerminalTab = lazy(() =>
   import("@compose/infrastructure/ui/components/TerminalTab").then((m) => ({
     default: m.TerminalTab,
@@ -226,6 +228,16 @@ export const ComposeDetailPage = () => {
           </Suspense>
         )}
         {activeTab === "monitoring" && <MonitoringTab composeId={composeId} />}
+        {activeTab === "tasks" && stack && (
+          <TasksTab
+            target={{
+              kind: "compose",
+              id: composeId,
+              serviceName: stack.services[0] ?? "",
+            }}
+            services={stack.services}
+          />
+        )}
       </div>
 
       <ConfirmDialog

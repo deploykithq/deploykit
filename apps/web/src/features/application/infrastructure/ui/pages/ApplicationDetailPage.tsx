@@ -25,6 +25,8 @@ import {
   SecurityTab,
 } from "@application/infrastructure/ui/components";
 
+import { TasksTab } from "@task/infrastructure/ui/components";
+
 const TerminalTab = lazy(() =>
   import("@application/infrastructure/ui/components/TerminalTab").then((m) => ({
     default: m.TerminalTab,
@@ -212,6 +214,9 @@ export const ApplicationDetailPage = () => {
         )}
         {activeTab === "previews" && (
           <PreviewsTab app={app} applicationId={applicationId} />
+        )}
+        {activeTab === "tasks" && (
+          <TasksTab target={{ kind: "application", id: applicationId }} />
         )}
       </div>
 

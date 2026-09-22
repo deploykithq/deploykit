@@ -10,6 +10,9 @@ import {
   type ComposeRunnerI,
 } from "./compose-runner";
 
+import type { OneOffSpecI } from "./task-runner";
+import type { OneOffResultI } from "./docker";
+
 // Shared local instance
 const localDocker = new DockerService();
 
@@ -78,6 +81,10 @@ export interface DockerServiceI {
     memory: { used: number; total: number; percent: number };
     network: { rx: number; tx: number };
   } | null>;
+  runOneOff(
+    spec: OneOffSpecI,
+    onLog: (chunk: string) => void,
+  ): Promise<OneOffResultI>;
 }
 
 /**

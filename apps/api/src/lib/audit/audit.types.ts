@@ -39,6 +39,12 @@ type AuditActionT =
   | "compose.update_env"
   | "compose.add_domain"
   | "compose.remove_domain"
+  // Scheduled tasks and one-off commands
+  | "task.create"
+  | "task.update"
+  | "task.delete"
+  | "task.run"
+  | "task.run_adhoc"
   // Servers
   | "server.create"
   | "server.update"
@@ -69,6 +75,7 @@ type ResourceTypeT =
   | "server"
   | "ssh_key"
   | "user"
-  | "notification_channel";
+  | "notification_channel"
+  | "task";
 
 export type { AuditActionT, ResourceTypeT };

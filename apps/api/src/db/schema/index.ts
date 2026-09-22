@@ -15,3 +15,5 @@ export * from "./project-members";
 export * from "./notification-channels";
 export * from "./compose-services";
 export * from "./compose-domains";
+export * from "./scheduled-tasks";
+export * from "./task-runs";

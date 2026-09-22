@@ -1,5 +1,9 @@
+import { PassThrough } from "stream";
+
 import { docker, ensureNetwork, connectToNetwork } from "../lib/docker";
 import { buildTraefikLabels } from "../lib/traefik";
+
+import type { OneOffSpecI } from "./task-runner";
 
 interface CreateContainerOptsI {
   name: string;
@@ -21,6 +25,37 @@ export interface ServiceContainerI {
   name: string;
   state: string; // running | exited | created | ...
 }
+
+export interface OneOffResultI {
+  exitCode: number;
+  containerId: string | null;
+  timedOut: boolean;
+}
+
+/**
+ * Turn a failure to start a one-off into something worth showing a user.
+ *
+ * Every one-off runs `/bin/sh -lc`, so an image without a shell — distroless,
+ * scratch, many Go images — cannot run one at all. Docker reports that as an
+ * OCI runtime error about "unable to start container process", which says
+ * nothing actionable. Anything else is passed through unchanged.
+ */
+export const explainStartFailure = (err: unknown, image: string): string => {
+  const raw = String((err as Error)?.message ?? err);
+  if (
+    /OCI runtime create failed|executable file not found|no such file or directory|exec format error/i.test(
+      raw,
+    )
+  ) {
+    return (
+      `Could not run a command in "${image}": the image appears to have no /bin/sh. ` +
+      `DeployKit runs every command through a shell, so the image needs one — ` +
+      `an Alpine- or Debian-based image has it, a distroless or scratch image does not. ` +
+      `(Docker said: ${raw})`
+    );
+  }
+  return raw;
+};
 
 interface ContainerStatsI {
   cpu: number;
@@ -495,6 +530,95 @@ export class DockerService {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Run a command in a throwaway container and collect its exit code.
+   *
+   * Env goes through the Docker API rather than a `-e` flag, so a service's
+   * secrets never appear in the host's process list. AutoRemove is off because
+   * we need `wait()`'s status code before the container disappears.
+   */
+  async runOneOff(
+    spec: OneOffSpecI,
+    onLog: (chunk: string) => void,
+  ): Promise<OneOffResultI> {
+    if (!(await this.imageExistsLocally(spec.image))) {
+      await this.pullImage(spec.image);
+    }
+    await ensureNetwork(spec.networkName);
+
+    const container = await docker.createContainer({
+      Image: spec.image,
+      name: spec.name,
+      Cmd: spec.cmd,
+      Env: spec.env,
+      Labels: spec.labels,
+      Tty: false,
+      AttachStdout: true,
+      AttachStderr: true,
+      HostConfig: {
+        Binds: spec.volumes ?? [],
+        RestartPolicy: { Name: "no" },
+        AutoRemove: false,
+        ...(spec.cpuMillicores
+          ? { NanoCpus: spec.cpuMillicores * 1_000_000 }
+          : {}),
+        ...(spec.memoryMb
+          ? {
+              Memory: spec.memoryMb * 1024 * 1024,
+              MemorySwap: spec.memoryMb * 1024 * 1024,
+            }
+          : {}),
+      },
+    });
+
+    await connectToNetwork(container.id, spec.networkName);
+
+    const stream = await container.attach({
+      stream: true,
+      stdout: true,
+      stderr: true,
+    });
+    // Tty is false, so Docker multiplexes stdout and stderr in one stream.
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    docker.modem.demuxStream(stream, stdout, stderr);
+    stdout.on("data", (c: Buffer) => onLog(c.toString("utf8")));
+    stderr.on("data", (c: Buffer) => onLog(c.toString("utf8")));
+
+    try {
+      await container.start();
+    } catch (err) {
+      // start() is outside the try/finally below on purpose: the container
+      // exists but never ran, so it has to be cleaned up here or it is left
+      // behind in "created" state — holding its name against a retry.
+      stdout.destroy();
+      stderr.destroy();
+      await container.remove({ force: true }).catch(() => {});
+      throw new Error(explainStartFailure(err, spec.image));
+    }
+
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      container.kill().catch(() => {});
+    }, spec.timeoutMs);
+
+    try {
+      const result = await container.wait();
+      return {
+        exitCode:
+          typeof result?.StatusCode === "number" ? result.StatusCode : -1,
+        containerId: container.id,
+        timedOut,
+      };
+    } finally {
+      clearTimeout(timer);
+      stdout.destroy();
+      stderr.destroy();
+      await container.remove({ force: true }).catch(() => {});
     }
   }
 }

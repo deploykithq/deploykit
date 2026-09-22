@@ -6,6 +6,7 @@ import {
   verifySocketAuth,
   canViewDeployment,
   canViewService,
+  canViewTaskRun,
 } from "./socket-auth";
 
 import type { UserT } from "../db/schema/index";
@@ -94,6 +95,18 @@ const initSocket = (
       socket.leave(`metrics:${serviceId}`);
     });
 
+    // Join a task run's room for live command output
+    socket.on("subscribe:task-run", async (runId: string) => {
+      if (typeof runId !== "string") return;
+      if (!(await canViewTaskRun(user, runId))) return;
+      socket.join(`task-run:${runId}`);
+    });
+
+    socket.on("unsubscribe:task-run", (runId: string) => {
+      if (typeof runId !== "string") return;
+      socket.leave(`task-run:${runId}`);
+    });
+
     socket.on("disconnect", () => {
       console.log(`[socket] Client disconnected: ${socket.id}`);
     });
@@ -140,6 +153,22 @@ const emitServiceStatus = (serviceId: string, status: string) => {
   io?.emit("service:updated", { serviceId, status });
 };
 
+const emitTaskLog = (runId: string, log: string) => {
+  io?.to(`task-run:${runId}`).emit("task:log", { runId, log });
+};
+
+const emitTaskStatus = (
+  runId: string,
+  status: string,
+  exitCode?: number | null,
+) => {
+  io?.to(`task-run:${runId}`).emit("task:status", {
+    runId,
+    status,
+    exitCode: exitCode ?? null,
+  });
+};
+
 export {
   initSocket,
   getIO,
@@ -147,4 +176,6 @@ export {
   emitDeployStatus,
   emitContainerLog,
   emitServiceStatus,
+  emitTaskLog,
+  emitTaskStatus,
 };
