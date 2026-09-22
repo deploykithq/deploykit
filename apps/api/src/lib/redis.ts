@@ -30,6 +30,18 @@ const composeDeployQueue = new Queue("compose-deploy", {
   },
 });
 
+// Scheduled tasks and one-off commands get their own queue for the same reason
+// Compose deploys do: a `migrate` must never wait behind an image build.
+const taskQueue = new Queue("task", {
+  connection: redis,
+  defaultJobOptions: {
+    removeOnComplete: { count: 100 },
+    removeOnFail: { count: 50 },
+    // A half-applied migration must not be retried behind the user's back.
+    attempts: 1,
+  },
+});
+
 const backupQueue = new Queue("backup", {
   connection: redis,
   defaultJobOptions: {
@@ -83,5 +95,6 @@ export {
   deployQueue,
   composeDeployQueue,
   backupQueue,
+  taskQueue,
   isRateLimited,
 };
