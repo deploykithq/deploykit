@@ -122,6 +122,7 @@ const ALL_EVENTS = [
   { value: "backup.completed", label: "Backup Completed" },
   { value: "health_check.failed", label: "Health Check Failed" },
   { value: "alert.fired", label: "Alert Fired" },
+  { value: "task.failed", label: "Task Failed" },
 ];
 
 /** Cuánto se muestra el resultado del test de un canal de notificación. */

@@ -7,7 +7,8 @@ type ComposeTabT =
   | "deployments"
   | "logs"
   | "terminal"
-  | "monitoring";
+  | "monitoring"
+  | "tasks";
 
 /** Un contenedor del stack, tal y como lo devuelve `compose.containers`. */
 interface ComposeContainerI {

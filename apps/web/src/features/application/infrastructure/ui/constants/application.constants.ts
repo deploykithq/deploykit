@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  CalendarClock,
   GitBranch,
   Globe,
   History,
@@ -30,6 +31,7 @@ const TABS: { id: TabT; label: string; icon: any }[] = [
   { id: "terminal", label: "Terminal", icon: TerminalSquare },
   { id: "monitoring", label: "Monitoring", icon: BarChart3 },
   { id: "security", label: "Security", icon: ShieldCheck },
+  { id: "tasks", label: "Tasks", icon: CalendarClock },
   { id: "previews", label: "Previews", icon: GitBranch },
 ];
 

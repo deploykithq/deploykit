@@ -23,7 +23,8 @@
       "@compose/*": ["./src/features/compose/*"],
       "@dashboard/*": ["./src/features/dashboard/*"],
       "@templates/*": ["./src/features/templates/*"],
-      "@status/*": ["./src/features/status/*"]
+      "@status/*": ["./src/features/status/*"],
+      "@task/*": ["./src/features/task/*"]
     }
   },
   "include": ["src/**/*"]
