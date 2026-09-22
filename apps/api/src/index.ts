@@ -18,7 +18,7 @@ import { initSocket } from "./lib/socket";
 import { startDeployWorker } from "./workers/deploy.worker";
 import { startComposeDeployWorker } from "./workers/compose-deploy.worker";
 import { startBackupWorker } from "./workers/backup.worker";
-import { startBackupScheduler } from "./workers/backup.scheduler";
+import { reconcileSchedules } from "./lib/task-scheduler";
 import { startMetricsScheduler } from "./workers/metrics.scheduler";
 import { startMetricsRollupScheduler } from "./workers/metrics-rollup.scheduler";
 import { startDiskScheduler } from "./workers/disk.scheduler";
@@ -276,7 +276,11 @@ async function main() {
   startDeployWorker();
   startComposeDeployWorker();
   startBackupWorker();
-  startBackupScheduler();
+  // Registers every task and backup cron with BullMQ, and drops schedules
+  // whose row disappeared while this process was down.
+  reconcileSchedules().catch((err) =>
+    console.error("[scheduler] Reconcile failed:", err.message),
+  );
   startMetricsScheduler();
   startMetricsRollupScheduler();
   startDiskScheduler();

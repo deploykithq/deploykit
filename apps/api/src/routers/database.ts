@@ -18,6 +18,10 @@ import {
   canViewSecrets,
 } from "../lib/permissions";
 import { backupQueue } from "../lib/redis";
+import {
+  upsertBackupSchedule,
+  removeBackupSchedule,
+} from "../lib/task-scheduler";
 import { logAction } from "../lib/audit/audit";
 import { generatePassword, encrypt, decrypt } from "../lib/encryption";
 
@@ -204,6 +208,7 @@ export const databaseRouter = router({
       }
 
       await ctx.db.delete(databases).where(eq(databases.id, input.id));
+      await removeBackupSchedule(input.id);
 
       await logAction(ctx, {
         action: "database.delete",
@@ -348,6 +353,10 @@ export const databaseRouter = router({
         .set(data)
         .where(eq(databases.id, id))
         .returning();
+
+      // A cron change has to reach BullMQ now — otherwise it would only take
+      // effect after a restart.
+      await upsertBackupSchedule(database!);
 
       await logAction(ctx, {
         action: "database.update_backup_config",
