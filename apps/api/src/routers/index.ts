@@ -1,6 +1,7 @@
 import { router } from "../trpc";
 import { authRouter } from "./auth";
 import { userRouter } from "./user";
+import { taskRouter } from "./task";
 import { logsRouter } from "./logs";
 import { auditRouter } from "./audit";
 import { serverRouter } from "./server";
@@ -33,6 +34,7 @@ export const appRouter = router({
   compose: composeRouter,
   status: statusRouter,
   logs: logsRouter,
+  task: taskRouter,
 });
 
 export type AppRouter = typeof appRouter;
