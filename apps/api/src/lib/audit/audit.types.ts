@@ -62,6 +62,9 @@ type AuditActionT =
   | "notification.create"
   | "notification.update"
   | "notification.delete"
+  // Instance configuration export / import
+  | "config.export"
+  | "config.import"
   // Project members
   | "project_member.add"
   | "project_member.update"

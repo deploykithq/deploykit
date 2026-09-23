@@ -1,5 +1,13 @@
 import { memo } from "react";
-import { ArrowLeft, Box, Database, Layers, Plus, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Box,
+  Database,
+  Download,
+  Layers,
+  Plus,
+  Trash2,
+} from "lucide-react";
 
 import { Button } from "@shared/components/button";
 import { Card } from "@shared/components/card";
@@ -45,6 +53,9 @@ export const ProjectDetailPage: React.FC = memo(function ProjectDetailPage() {
     deleteProject,
     handleAppCreated,
     handleDbCreated,
+    exportProject,
+    exporting,
+    exportError,
   } = useProjectDetail();
 
   if (isLoading)
@@ -71,6 +82,18 @@ export const ProjectDetailPage: React.FC = memo(function ProjectDetailPage() {
           )}
         </div>
         <div className="flex flex-wrap gap-2">
+          {canWrite && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={exportProject}
+              disabled={exporting}
+              title="Download this project's configuration as YAML"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Export
+            </Button>
+          )}
           {isAdmin && (
             <Button
               variant="danger"
@@ -109,6 +132,12 @@ export const ProjectDetailPage: React.FC = memo(function ProjectDetailPage() {
           )}
         </div>
       </div>
+
+      {exportError && (
+        <p role="alert" className="text-xs text-danger">
+          {exportError}
+        </p>
+      )}
 
       {/* Applications */}
       <section>

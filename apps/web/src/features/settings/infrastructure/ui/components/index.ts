@@ -1,3 +1,5 @@
+export { ConfigImportModal } from "./ConfigImportModal";
+export { ConfigTransferSection } from "./ConfigTransferSection";
 export { InfoSection } from "./InfoSection";
 export { PasswordSection } from "./PasswordSection";
 export { ProfileSection } from "./ProfileSection";
