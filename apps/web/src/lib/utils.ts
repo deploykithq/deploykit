@@ -23,4 +23,23 @@ const timeAgo = (date: string | Date): string => {
   return `${Math.floor(seconds / 86400)}d ago`;
 };
 
-export { cn, formatBytes, timeAgo };
+/**
+ * Hand the user a file without a network round-trip. Revoking on the next tick
+ * keeps Safari from cancelling the download.
+ */
+const downloadTextFile = (
+  filename: string,
+  contents: string,
+  mimeType = "text/plain",
+): void => {
+  const url = URL.createObjectURL(new Blob([contents], { type: mimeType }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+};
+
+export { cn, formatBytes, timeAgo, downloadTextFile };

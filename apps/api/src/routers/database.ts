@@ -28,6 +28,8 @@ import { generatePassword, encrypt, decrypt } from "../lib/encryption";
 import { createDatabaseSchema, DATABASE_IMAGES } from "@deploykit/shared";
 
 import type { DatabaseType } from "@deploykit/shared";
+import type { DB } from "../db/index";
+import type { DatabaseT } from "../db/schema/index";
 
 export const databaseRouter = router({
   byId: protectedProcedure
@@ -88,13 +90,6 @@ export const databaseRouter = router({
 
       const imageConfig = DATABASE_IMAGES[input.type];
       const password = generatePassword();
-      const containerName = `dk-${input.name}`;
-
-      // Resolve docker service (local or remote based on serverId)
-      const { docker: dockerService } = await getDockerForServer(
-        input.serverId,
-      );
-
       const enableReplicaSet = input.type === "mongodb" && input.replicaSet;
 
       // Create DB record
@@ -114,47 +109,11 @@ export const databaseRouter = router({
         })
         .returning();
 
-      // Build env vars
-      const env = buildDbEnv(input.type, password, input.name);
-
-      // Pull image + create and start container (works on both local and remote)
-      try {
-        await dockerService.pullImage(imageConfig.image);
-      } catch {
-        // Image might already exist locally
-      }
-
-      const containerId = await dockerService.createAndStart({
-        name: containerName,
-        image: imageConfig.image,
-        env,
-        networkName: "deploykit-network",
-        volumes: [`dk-${input.name}-data:${getDataPath(input.type)}`],
-        labels: {
-          "deploykit.managed": "true",
-          "deploykit.type": "database",
-          "deploykit.project": input.projectId,
-          "deploykit.service": database!.id,
-        },
-        ...(enableReplicaSet && {
-          command: [
-            "bash",
-            "-c",
-            "[ -f /data/db/replica.key ] || openssl rand -base64 756 > /data/db/replica.key; " +
-              "chmod 400 /data/db/replica.key; chown 999:999 /data/db/replica.key; " +
-              "exec docker-entrypoint.sh mongod --replSet rs0 --keyFile /data/db/replica.key --bind_ip_all",
-          ],
-        }),
-      });
-
-      // Initialize the replica set after container is running
-      if (enableReplicaSet) await initMongoReplicaSet(containerName, password);
-
-      // Update record with container ID
-      await ctx.db
-        .update(databases)
-        .set({ containerId, status: "running" })
-        .where(eq(databases.id, database!.id));
+      const { containerName } = await provisionDatabaseContainer(
+        ctx.db,
+        database!,
+        password,
+      );
 
       const connectionString = buildConnectionString(
         input.type,
@@ -228,19 +187,57 @@ export const databaseRouter = router({
         where: eq(databases.id, input.id),
       });
 
-      if (!database?.containerId)
+      if (!database)
         throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "No running container",
+          code: "NOT_FOUND",
+          message: "Database not found",
         });
 
+      // The role is resolved before anything else is decided: past this point
+      // the procedure can pull an image and create a container, which a
+      // non-member must not be able to trigger by guessing an id.
       const startRole = await getProjectRole(ctx.user, database.projectId);
+
+      if (!startRole)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Database not found",
+        });
 
       if (!canOperate(startRole))
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "Operator access required for this project",
         });
+
+      // No container means the row was never provisioned — which is how a
+      // database restored from a configuration manifest arrives, since the
+      // import writes rows and never touches Docker. The first Start is what
+      // provisions it, with the stored password, so anything holding its
+      // connection string keeps working.
+      if (!database.containerId) {
+        const password = database.dbPassword
+          ? decrypt(database.dbPassword)
+          : null;
+        if (database.type !== "redis" && !password)
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "This database has no stored password, so its container cannot be created.",
+          });
+
+        await provisionDatabaseContainer(ctx.db, database, password ?? "");
+
+        await logAction(ctx, {
+          action: "database.create",
+          resourceType: "database",
+          resourceId: database.id,
+          resourceName: database.name,
+          metadata: { provisioned: true, type: database.type },
+        });
+
+        return { success: true, provisioned: true };
+      }
 
       const { docker } = await getDockerForServer(database.serverId);
 
@@ -258,7 +255,7 @@ export const databaseRouter = router({
         resourceName: database.name,
       });
 
-      return { success: true };
+      return { success: true, provisioned: false };
     }),
 
   stop: protectedProcedure
@@ -535,6 +532,68 @@ export const databaseRouter = router({
       return { success: true };
     }),
 });
+
+/**
+ * Pull the image, create the container and record it on the row.
+ *
+ * Shared by `create` and by `start` on a database that has no container yet.
+ * The password is a parameter rather than something read here because the two
+ * callers get it from different places — freshly generated, or decrypted from
+ * the row — and the engine bakes it in at first init, so the row and the
+ * container have to agree by construction.
+ */
+const provisionDatabaseContainer = async (
+  database: DB,
+  row: DatabaseT,
+  password: string,
+): Promise<{ containerId: string; containerName: string }> => {
+  const type = row.type as DatabaseType;
+  const imageConfig = DATABASE_IMAGES[type];
+  const containerName = `dk-${row.name}`;
+  const enableReplicaSet = type === "mongodb" && row.replicaSet;
+
+  // Resolve docker service (local or remote based on serverId)
+  const { docker: dockerService } = await getDockerForServer(row.serverId);
+
+  try {
+    await dockerService.pullImage(imageConfig.image);
+  } catch {
+    // Image might already exist locally
+  }
+
+  const containerId = await dockerService.createAndStart({
+    name: containerName,
+    image: imageConfig.image,
+    env: buildDbEnv(type, password, row.databaseName || row.name),
+    networkName: "deploykit-network",
+    volumes: [`dk-${row.name}-data:${getDataPath(type)}`],
+    labels: {
+      "deploykit.managed": "true",
+      "deploykit.type": "database",
+      "deploykit.project": row.projectId,
+      "deploykit.service": row.id,
+    },
+    ...(enableReplicaSet && {
+      command: [
+        "bash",
+        "-c",
+        "[ -f /data/db/replica.key ] || openssl rand -base64 756 > /data/db/replica.key; " +
+          "chmod 400 /data/db/replica.key; chown 999:999 /data/db/replica.key; " +
+          "exec docker-entrypoint.sh mongod --replSet rs0 --keyFile /data/db/replica.key --bind_ip_all",
+      ],
+    }),
+  });
+
+  // Initialize the replica set after container is running
+  if (enableReplicaSet) await initMongoReplicaSet(containerName, password);
+
+  await database
+    .update(databases)
+    .set({ containerId, status: "running", updatedAt: new Date() })
+    .where(eq(databases.id, row.id));
+
+  return { containerId, containerName };
+};
 
 const buildDbEnv = (
   type: DatabaseType,

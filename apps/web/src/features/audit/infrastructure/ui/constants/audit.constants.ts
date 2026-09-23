@@ -33,6 +33,8 @@ const ACTION_LABELS: Record<string, string> = {
   "user.update_role": "Changed user role",
   "user.reset_password": "Reset user password",
   "user.delete": "Deleted user",
+  "config.export": "Exported configuration",
+  "config.import": "Imported configuration",
 };
 
 const RESOURCE_COLORS: Record<string, string> = {

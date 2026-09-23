@@ -5,6 +5,7 @@ import { projectDetailRoute } from "@/router";
 
 import { useAuthStore } from "@lib/auth";
 import { trpc } from "@lib/trpc";
+import { downloadTextFile } from "@lib/utils";
 
 import type { ProjectI } from "@project/infrastructure/ui/interfaces/project.interfaces";
 
@@ -72,6 +73,28 @@ export const useProjectDetail = () => {
     utils.project.byId.invalidate({ id: projectId });
   };
 
+  // El export es una mutación (la respuesta puede llevar secretos y no debe
+  // quedarse en la caché de React Query), así que se dispara a mano.
+  const exportMutation = trpc.config.exportProject.useMutation();
+
+  const exportProject = async () => {
+    if (!project) return;
+    try {
+      const result = await exportMutation.mutateAsync({
+        projectId,
+        includeSecrets: false,
+      });
+      const slug = project.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      downloadTextFile(
+        `deploykit-${slug || "project"}-${new Date().toISOString().slice(0, 10)}.yaml`,
+        result.manifest,
+        "text/yaml",
+      );
+    } catch {
+      // Rendered from exportError.
+    }
+  };
+
   return {
     projectId,
     project,
@@ -93,5 +116,8 @@ export const useProjectDetail = () => {
     deleteProject: () => deleteMutation.mutate({ id: projectId }),
     handleAppCreated,
     handleDbCreated,
+    exportProject,
+    exporting: exportMutation.isPending,
+    exportError: exportMutation.error?.message ?? null,
   };
 };

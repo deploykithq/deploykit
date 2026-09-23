@@ -3,6 +3,7 @@ import { authRouter } from "./auth";
 import { userRouter } from "./user";
 import { taskRouter } from "./task";
 import { logsRouter } from "./logs";
+import { configRouter } from "./config";
 import { auditRouter } from "./audit";
 import { serverRouter } from "./server";
 import { sshKeyRouter } from "./ssh-key";
@@ -35,6 +36,7 @@ export const appRouter = router({
   status: statusRouter,
   logs: logsRouter,
   task: taskRouter,
+  config: configRouter,
 });
 
 export type AppRouter = typeof appRouter;

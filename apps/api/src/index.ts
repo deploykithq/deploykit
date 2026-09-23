@@ -44,6 +44,16 @@ const IS_PROD = process.env.NODE_ENV === "production";
 // Only honour X-Forwarded-For when explicitly running behind a trusted proxy
 // (e.g. Traefik). Otherwise clients could spoof their IP to evade rate limits.
 const TRUST_PROXY = process.env.TRUST_PROXY === "true";
+/** The posture every route keeps, and every procedure but the one below. */
+const DEFAULT_BODY_LIMIT = 1_048_576;
+/**
+ * A configuration manifest carries the Compose file of every stack, so it does
+ * not fit in 1 MiB. The tRPC adapter registers a single catch-all route and
+ * takes no per-procedure body limit, so the route's limit is raised and the
+ * onRequest hook below holds every other procedure to the old one.
+ */
+const TRPC_BODY_LIMIT = 4 * DEFAULT_BODY_LIMIT;
+const LARGE_BODY_PROCEDURES = new Set(["config.import"]);
 
 /** Resolve the client IP, trusting X-Forwarded-For only behind a known proxy. */
 function clientIp(req: { headers: Record<string, any>; ip: string }): string {
@@ -65,7 +75,7 @@ async function main() {
 
   const server = Fastify({
     logger: true,
-    bodyLimit: 1_048_576, // 1 MiB cap on request bodies
+    bodyLimit: DEFAULT_BODY_LIMIT, // 1 MiB cap on request bodies
     trustProxy: TRUST_PROXY,
     serverFactory: (handler) => {
       httpServer.on("request", handler);
@@ -141,6 +151,22 @@ async function main() {
       return;
     }
 
+    // Keep every procedure but the configuration import at the server-wide
+    // limit, which the tRPC route itself had to exceed. tRPC batches several
+    // procedures into one POST, so a batch that includes the import is allowed
+    // rather than rejected outright.
+    if (req.url.startsWith("/trpc/") && req.method === "POST") {
+      const path = req.url.slice("/trpc/".length).split("?")[0] ?? "";
+      const allowsLargeBody = path
+        .split(",")
+        .some((procedure) => LARGE_BODY_PROCEDURES.has(procedure));
+      const length = Number(req.headers["content-length"] ?? 0);
+      if (!allowsLargeBody && length > DEFAULT_BODY_LIMIT) {
+        reply.status(413).send({ error: "Payload too large" });
+        return;
+      }
+    }
+
     // Global rate limit: 200 requests/min per IP for all API routes
     if (req.url.startsWith("/trpc/") || req.url.startsWith("/api/")) {
       if (await isRateLimited(`global:${ip}`, 200, 60_000)) {
@@ -171,6 +197,12 @@ async function main() {
         return;
       }
     }
+  });
+
+  // The tRPC plugin registers `/trpc/:path` with no route options of its own,
+  // and an onRoute hook added before it is registered still fires for it.
+  server.addHook("onRoute", (route) => {
+    if (route.url === "/trpc/:path") route.bodyLimit = TRPC_BODY_LIMIT;
   });
 
   // tRPC
