@@ -85,14 +85,11 @@ describe("buildManifest", () => {
     });
   });
 
-  it("subscribes to push, pull_request and the installation events", () => {
+  it("subscribes to push and pull_request, and to nothing else", () => {
+    // installation / installation_repositories are deliberately absent: every
+    // App receives them automatically and they cannot be subscribed to.
     const manifest = mod.buildManifest(mod.manifestUrls());
-    expect(manifest.default_events.sort()).toEqual([
-      "installation",
-      "installation_repositories",
-      "pull_request",
-      "push",
-    ]);
+    expect(manifest.default_events.sort()).toEqual(["pull_request", "push"]);
   });
 
   it("registers the webhook and both redirect URLs, and stays private", () => {

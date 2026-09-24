@@ -106,6 +106,11 @@ const assertWebhookReachable = (urls: ManifestUrlsI): void => {
  *
  * Nothing asks for `checks` (commit statuses are enough and cost one call),
  * `deployments`, `administration`, `workflows` or `issues`.
+ *
+ * Only `push` and `pull_request` are subscribed. The `installation` and
+ * `installation_repositories` events this integration also handles are
+ * delivered to every App automatically and cannot be subscribed to, so naming
+ * them here would at best be noise and at worst rejected.
  */
 const buildManifest = (urls: ManifestUrlsI, name?: string): AppManifestI => {
   const host = new URL(urls.baseUrl).hostname;
@@ -124,12 +129,7 @@ const buildManifest = (urls: ManifestUrlsI, name?: string): AppManifestI => {
       statuses: "write",
       pull_requests: "write",
     },
-    default_events: [
-      "push",
-      "pull_request",
-      "installation",
-      "installation_repositories",
-    ],
+    default_events: ["push", "pull_request"],
   };
 };
 

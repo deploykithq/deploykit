@@ -78,6 +78,11 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+      # The instance's own public URL. Traefik serves the panel and the API on
+      # the same host, so it is derived from DOMAIN rather than kept in step by
+      # hand. Used for CORS, Socket.IO origins, the links DeployKit puts on a
+      # commit status, and the webhook/redirect URLs frozen into a GitHub App.
+      WEB_URL: https://${DOMAIN}
       API_PORT: 4000
       COMPOSE_ROOT: /var/lib/deploykit/compose
       # Optional: where one-click templates get their hostnames.
