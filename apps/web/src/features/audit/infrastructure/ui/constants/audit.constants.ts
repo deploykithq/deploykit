@@ -21,6 +21,11 @@ const ACTION_LABELS: Record<string, string> = {
   "database.restart": "Restarted database",
   "database.backup": "Triggered backup",
   "database.update_backup_config": "Updated backup config",
+  "task.create": "Created task",
+  "task.update": "Updated task",
+  "task.delete": "Deleted task",
+  "task.run": "Ran task",
+  "task.run_adhoc": "Ran ad-hoc command",
   "server.create": "Added server",
   "server.update": "Updated server",
   "server.delete": "Deleted server",
@@ -28,6 +33,8 @@ const ACTION_LABELS: Record<string, string> = {
   "user.update_role": "Changed user role",
   "user.reset_password": "Reset user password",
   "user.delete": "Deleted user",
+  "config.export": "Exported configuration",
+  "config.import": "Imported configuration",
 };
 
 const RESOURCE_COLORS: Record<string, string> = {

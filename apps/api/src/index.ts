@@ -18,7 +18,8 @@ import { initSocket } from "./lib/socket";
 import { startDeployWorker } from "./workers/deploy.worker";
 import { startComposeDeployWorker } from "./workers/compose-deploy.worker";
 import { startBackupWorker } from "./workers/backup.worker";
-import { startBackupScheduler } from "./workers/backup.scheduler";
+import { startTaskWorker } from "./workers/task.worker";
+import { reconcileSchedules } from "./lib/task-scheduler";
 import { startMetricsScheduler } from "./workers/metrics.scheduler";
 import { startMetricsRollupScheduler } from "./workers/metrics-rollup.scheduler";
 import { startDiskScheduler } from "./workers/disk.scheduler";
@@ -43,6 +44,19 @@ const IS_PROD = process.env.NODE_ENV === "production";
 // Only honour X-Forwarded-For when explicitly running behind a trusted proxy
 // (e.g. Traefik). Otherwise clients could spoof their IP to evade rate limits.
 const TRUST_PROXY = process.env.TRUST_PROXY === "true";
+/** The posture every route keeps, and every procedure but the one below. */
+const DEFAULT_BODY_LIMIT = 1_048_576;
+/**
+ * A configuration manifest carries the Compose file of every stack, so it does
+ * not fit in 1 MiB. The tRPC adapter registers a single catch-all route and
+ * takes no per-procedure body limit, so the route's limit is raised and the
+ * onRequest hook below holds every other procedure to the old one.
+ */
+const TRPC_BODY_LIMIT = 4 * DEFAULT_BODY_LIMIT;
+const LARGE_BODY_PROCEDURES = new Set(["config.import"]);
+
+/** A request whose original bytes were retained for signature verification. */
+type WithRawBody = { rawBody?: Buffer };
 
 /** Resolve the client IP, trusting X-Forwarded-For only behind a known proxy. */
 function clientIp(req: { headers: Record<string, any>; ip: string }): string {
@@ -64,7 +78,7 @@ async function main() {
 
   const server = Fastify({
     logger: true,
-    bodyLimit: 1_048_576, // 1 MiB cap on request bodies
+    bodyLimit: DEFAULT_BODY_LIMIT, // 1 MiB cap on request bodies
     trustProxy: TRUST_PROXY,
     serverFactory: (handler) => {
       httpServer.on("request", handler);
@@ -140,6 +154,22 @@ async function main() {
       return;
     }
 
+    // Keep every procedure but the configuration import at the server-wide
+    // limit, which the tRPC route itself had to exceed. tRPC batches several
+    // procedures into one POST, so a batch that includes the import is allowed
+    // rather than rejected outright.
+    if (req.url.startsWith("/trpc/") && req.method === "POST") {
+      const path = req.url.slice("/trpc/".length).split("?")[0] ?? "";
+      const allowsLargeBody = path
+        .split(",")
+        .some((procedure) => LARGE_BODY_PROCEDURES.has(procedure));
+      const length = Number(req.headers["content-length"] ?? 0);
+      if (!allowsLargeBody && length > DEFAULT_BODY_LIMIT) {
+        reply.status(413).send({ error: "Payload too large" });
+        return;
+      }
+    }
+
     // Global rate limit: 200 requests/min per IP for all API routes
     if (req.url.startsWith("/trpc/") || req.url.startsWith("/api/")) {
       if (await isRateLimited(`global:${ip}`, 200, 60_000)) {
@@ -163,13 +193,42 @@ async function main() {
       }
     }
 
-    // Webhook limit: 30 requests/min per IP
+    // Webhook limit: 120 requests/min per IP. A GitHub App delivers every
+    // repository of every installation through this one endpoint from a small
+    // IP range, and GitHub never retries a delivery it failed to hand over —
+    // a dropped request is a lost deploy, so the bucket has to be generous.
     if (req.url.startsWith("/api/webhooks")) {
-      if (await isRateLimited(`webhook:${ip}`, 30, 60_000)) {
+      if (await isRateLimited(`webhook:${ip}`, 120, 60_000)) {
         reply.status(429).send({ error: "Too many webhook requests." });
         return;
       }
     }
+  });
+
+  // Webhook signatures are computed over the bytes the sender signed, so the
+  // raw buffer has to survive parsing. This replaces Fastify's built-in JSON
+  // parser with identical semantics and keeps the buffer only for webhooks —
+  // retaining 4 MiB on every config.import would be pure waste.
+  server.addContentTypeParser(
+    "application/json",
+    { parseAs: "buffer" },
+    (req, body: Buffer, done) => {
+      if (req.url.startsWith("/api/webhooks/")) {
+        (req as WithRawBody).rawBody = body;
+      }
+      try {
+        done(null, body.length ? JSON.parse(body.toString("utf8")) : {});
+      } catch (err: any) {
+        err.statusCode = 400;
+        done(err, undefined);
+      }
+    },
+  );
+
+  // The tRPC plugin registers `/trpc/:path` with no route options of its own,
+  // and an onRoute hook added before it is registered still fires for it.
+  server.addHook("onRoute", (route) => {
+    if (route.url === "/trpc/:path") route.bodyLimit = TRPC_BODY_LIMIT;
   });
 
   // tRPC
@@ -190,12 +249,19 @@ async function main() {
   // Webhooks
   server.post("/api/webhooks/github", async (req, reply) => {
     try {
-      // Verify GitHub signature
-      const rawBody = JSON.stringify(req.body);
+      // Verify GitHub signature over the exact bytes GitHub signed
+      const rawBody = (req as WithRawBody).rawBody;
       const signature = req.headers["x-hub-signature-256"] as
         | string
         | undefined;
-      if (!webhookService.verifyGitHubSignature(rawBody, signature)) {
+      const authorized =
+        rawBody !== undefined &&
+        (await webhookService.verifyGitHubSignature(
+          rawBody,
+          signature,
+          req.headers as Record<string, string>,
+        ));
+      if (!authorized) {
         reply.status(401).send({ error: "Invalid webhook signature" });
         return;
       }
@@ -276,7 +342,12 @@ async function main() {
   startDeployWorker();
   startComposeDeployWorker();
   startBackupWorker();
-  startBackupScheduler();
+  startTaskWorker();
+  // Registers every task and backup cron with BullMQ, and drops schedules
+  // whose row disappeared while this process was down.
+  reconcileSchedules().catch((err) =>
+    console.error("[scheduler] Reconcile failed:", err.message),
+  );
   startMetricsScheduler();
   startMetricsRollupScheduler();
   startDiskScheduler();

@@ -39,6 +39,12 @@ type AuditActionT =
   | "compose.update_env"
   | "compose.add_domain"
   | "compose.remove_domain"
+  // Scheduled tasks and one-off commands
+  | "task.create"
+  | "task.update"
+  | "task.delete"
+  | "task.run"
+  | "task.run_adhoc"
   // Servers
   | "server.create"
   | "server.update"
@@ -56,6 +62,13 @@ type AuditActionT =
   | "notification.create"
   | "notification.update"
   | "notification.delete"
+  // Instance configuration export / import
+  | "config.export"
+  | "config.import"
+  // GitHub App
+  | "github_app.create"
+  | "github_app.delete"
+  | "github_app.sync"
   // Project members
   | "project_member.add"
   | "project_member.update"
@@ -69,6 +82,8 @@ type ResourceTypeT =
   | "server"
   | "ssh_key"
   | "user"
-  | "notification_channel";
+  | "notification_channel"
+  | "task"
+  | "github_app";
 
 export type { AuditActionT, ResourceTypeT };

@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useAuthStore } from "@lib/auth";
@@ -13,6 +13,8 @@ export const useLoginForm = () => {
   const setAuth = useAuthStore((s) => s.setAuth);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  // Already validated as a same-origin path by the route's validateSearch.
+  const { redirect } = useSearch({ from: "/login" });
 
   const { data: hasUsers, isLoading: checkingUsers } =
     trpc.auth.hasUsers.useQuery();
@@ -26,10 +28,12 @@ export const useLoginForm = () => {
       // back by the app layout and mistaken for the *current* session state.
       queryClient.removeQueries();
       setAuth(data.user, data.accessToken, data.refreshToken);
-      // Navigate to dashboard — this triggers the router to re-evaluate guards
-      navigate({ to: "/" });
+      // Back where the guard interrupted them, query string and all, so a
+      // flow that bounced through login (a GitHub callback, say) resumes.
+      // Navigating also makes the router re-evaluate its guards.
+      navigate({ to: redirect || "/" });
     },
-    [queryClient, setAuth, navigate],
+    [queryClient, setAuth, navigate, redirect],
   );
 
   const handleAuthError = useCallback(

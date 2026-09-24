@@ -62,6 +62,7 @@ export const NOTIFICATION_EVENTS = [
   "backup.completed",
   "health_check.failed",
   "alert.fired",
+  "task.failed",
 ] as const;
 
 export type NotificationEvent = (typeof NOTIFICATION_EVENTS)[number];

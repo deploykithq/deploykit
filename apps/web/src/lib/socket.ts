@@ -69,6 +69,55 @@ const useDeployLogs = (deploymentId: string | null) => {
 };
 
 /**
+ * Subscribe to a task run's live output. Mirrors useDeployLogs: the server
+ * authorizes the room, so a rejected subscribe simply yields no lines.
+ */
+const useTaskRunLogs = (runId: string | null) => {
+  const [lines, setLines] = useState<string[]>([]);
+  const [status, setStatus] = useState<string | null>(null);
+  const [exitCode, setExitCode] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!runId) return;
+    setLines([]);
+    setStatus(null);
+    setExitCode(null);
+
+    const s = getSocket();
+    s.emit("subscribe:task-run", runId);
+
+    const handleLog = (data: { runId: string; log: string }) => {
+      if (data.runId !== runId) return;
+      setLines((prev) => {
+        const next = [...prev, data.log];
+        return next.length > 2000 ? next.slice(-2000) : next;
+      });
+    };
+
+    const handleStatus = (data: {
+      runId: string;
+      status: string;
+      exitCode: number | null;
+    }) => {
+      if (data.runId !== runId) return;
+      setStatus(data.status);
+      setExitCode(data.exitCode);
+    };
+
+    s.on("task:log", handleLog);
+    s.on("task:status", handleStatus);
+
+    return () => {
+      s.emit("unsubscribe:task-run", runId);
+      s.off("task:log", handleLog);
+      s.off("task:status", handleStatus);
+    };
+  }, [runId]);
+
+  return { lines, status, exitCode };
+};
+
+/**
  * Subscribe to live container logs.
  */
 const useContainerLogs = (containerId: string | null) => {
@@ -128,6 +177,7 @@ export {
   reconnectSocket,
   useDeployLogs,
   useContainerLogs,
+  useTaskRunLogs,
   useServiceUpdates,
 };
 

@@ -2,6 +2,7 @@ import { memo } from "react";
 import {
   Cpu,
   GitBranch,
+  Github,
   HardDrive,
   Lock,
   ShieldCheck,
@@ -12,6 +13,8 @@ import { Button } from "@shared/components/button";
 import { Card } from "@shared/components/card";
 import { Input } from "@shared/components/input";
 import { Select } from "@shared/components/select";
+
+import { RepositoryPicker } from "@github/infrastructure/ui/components/RepositoryPicker";
 
 import { CopyableField } from "@application/infrastructure/ui/components/CopyableField";
 
@@ -27,6 +30,11 @@ export const GeneralTab: React.FC<GeneralTabPropsI> = memo(function GeneralTab({
   applicationId,
 }) {
   const {
+    connected,
+    canConnect,
+    changingRepo,
+    setChangingRepo,
+    picker,
     repoUrl,
     setRepoUrl,
     branch,
@@ -100,22 +108,75 @@ export const GeneralTab: React.FC<GeneralTabPropsI> = memo(function GeneralTab({
             Source
           </h3>
 
-          {/* Repo URL spans full width — it's long */}
-          <Input
-            label="Repository URL"
-            value={repoUrl}
-            onChange={(e) => setRepoUrl(e.target.value)}
-            placeholder="https://github.com/user/repo"
-          />
+          {changingRepo ? (
+            <div className="space-y-3">
+              <RepositoryPicker
+                picker={picker}
+                branch={branch}
+                onBranchChange={setBranch}
+              />
+              <button
+                type="button"
+                onClick={() => setChangingRepo(false)}
+                className="text-[11px] text-accent hover:underline"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : connected ? (
+            <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 space-y-1.5">
+              <p className="text-sm flex items-center gap-2">
+                <Github className="w-3.5 h-3.5 text-text-muted shrink-0" />
+                <span className="truncate">
+                  {app.githubRepoFullName || repoUrl}
+                </span>
+                <span className="text-[10px] text-success bg-success/10 px-1.5 py-0.5 rounded shrink-0">
+                  GitHub App
+                </span>
+              </p>
+              <p className="text-[11px] text-text-muted">
+                Cloned with a credential that expires in an hour. No access
+                token is stored for this application.
+              </p>
+              <button
+                type="button"
+                onClick={() => setChangingRepo(true)}
+                className="text-[11px] text-accent hover:underline"
+              >
+                Change repository
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Repo URL spans full width — it's long */}
+              <Input
+                label="Repository URL"
+                value={repoUrl}
+                onChange={(e) => setRepoUrl(e.target.value)}
+                placeholder="https://github.com/user/repo"
+              />
+              {canConnect && (
+                <button
+                  type="button"
+                  onClick={() => setChangingRepo(true)}
+                  className="text-[11px] text-accent hover:underline"
+                >
+                  Connect through the GitHub App instead
+                </button>
+              )}
+            </>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Input
-              label="Branch"
-              value={branch}
-              onChange={(e) => setBranch(e.target.value)}
-              placeholder="main"
-              autoComplete="off"
-            />
+            {!changingRepo && (
+              <Input
+                label="Branch"
+                value={branch}
+                onChange={(e) => setBranch(e.target.value)}
+                placeholder="main"
+                autoComplete="off"
+              />
+            )}
             <Input
               label="Root Directory"
               value={rootDirectory}
@@ -125,8 +186,8 @@ export const GeneralTab: React.FC<GeneralTabPropsI> = memo(function GeneralTab({
             />
           </div>
 
-          {/* Access Token */}
-          <div className="space-y-1.5">
+          {/* Access Token — irrelevant once the App provides the credential */}
+          <div className={connected || changingRepo ? "hidden" : "space-y-1.5"}>
             <label className="text-xs font-medium text-text-secondary flex items-center gap-1.5">
               <Lock className="w-3 h-3" />
               Access Token
@@ -222,13 +283,23 @@ export const GeneralTab: React.FC<GeneralTabPropsI> = memo(function GeneralTab({
           <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted">
             Webhook
           </h3>
-          <CopyableField
-            value={`${window.location.origin}/api/webhooks/github`}
-          />
-          <p className="text-[11px] text-text-muted">
-            Add this to your GitHub repo → Settings → Webhooks to auto-deploy on
-            push.
-          </p>
+          {connected ? (
+            <p className="text-[11px] text-success flex items-start gap-1.5">
+              <Github className="w-3.5 h-3.5 shrink-0 mt-px" />
+              Handled by the GitHub App — pushes and pull requests arrive
+              automatically. There is no repo webhook to set up.
+            </p>
+          ) : (
+            <>
+              <CopyableField
+                value={`${window.location.origin}/api/webhooks/github`}
+              />
+              <p className="text-[11px] text-text-muted">
+                Add this to your GitHub repo → Settings → Webhooks to
+                auto-deploy on push.
+              </p>
+            </>
+          )}
         </section>
 
         {/* Persistent Volumes */}

@@ -7,6 +7,9 @@ const SECRET_PATTERNS: RegExp[] = [
   /x-access-token:[^@\s]+@/gi,
   // Generic password= or secret= in key=value pairs
   /(password|secret|token|apikey|api_key|access_key|private_key)\s*[=:]\s*\S+/gi,
+  // Legacy GitHub installation tokens (v1. + 40 hex) — the modern ghs_ form is
+  // covered by the generic pattern above, this one is not.
+  /\bv1\.[0-9a-f]{40}\b/gi,
   // AWS keys
   /\b(AKIA|ASIA)[A-Z0-9]{16}\b/g,
   // Long hex strings that look like secrets (64+ chars)

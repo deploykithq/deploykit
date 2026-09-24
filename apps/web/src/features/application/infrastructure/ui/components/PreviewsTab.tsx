@@ -67,19 +67,33 @@ export const PreviewsTab: React.FC<PreviewsTabPropsI> = memo(
           </div>
         </Card>
 
-        {/* Webhook reminder */}
+        {/* Webhook reminder — unnecessary once the GitHub App is connected */}
         <Card>
-          <p className="text-xs font-medium text-text-secondary mb-2">
-            Webhook URL — add to your repo for PR events
-          </p>
-          <CopyableField
-            value={`${window.location.origin}/api/webhooks/github`}
-          />
-          <p className="text-[11px] text-text-muted mt-1.5">
-            GitHub: Settings → Webhooks → select <strong>Pull requests</strong>{" "}
-            events. GitLab: Settings → Webhooks → select{" "}
-            <strong>Merge request</strong> events.
-          </p>
+          {app.githubInstallationId ? (
+            <>
+              <p className="text-xs font-medium text-text-secondary mb-2">
+                Pull request events
+              </p>
+              <p className="text-[11px] text-text-muted">
+                Handled by the GitHub App. DeployKit also posts the preview URL
+                on the pull request and reports the deploy on its commit.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-xs font-medium text-text-secondary mb-2">
+                Webhook URL — add to your repo for PR events
+              </p>
+              <CopyableField
+                value={`${window.location.origin}/api/webhooks/github`}
+              />
+              <p className="text-[11px] text-text-muted mt-1.5">
+                GitHub: Settings → Webhooks → select{" "}
+                <strong>Pull requests</strong> events. GitLab: Settings →
+                Webhooks → select <strong>Merge request</strong> events.
+              </p>
+            </>
+          )}
         </Card>
 
         {/* Preview list */}
@@ -139,7 +153,7 @@ export const PreviewsTab: React.FC<PreviewsTabPropsI> = memo(
                         )}
                         {lastDeploy?.commitHash && (
                           <span className="text-xs font-mono text-text-muted">
-                            {lastDeploy.commitHash}
+                            {lastDeploy.commitHash.slice(0, 7)}
                           </span>
                         )}
                         <span className="text-xs text-text-muted">

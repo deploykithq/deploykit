@@ -6,7 +6,12 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "../db/index";
 import { applications, deployments } from "../db/schema/index";
 
-import { GitService } from "../services/git";
+import { GitService, shortSha } from "../services/git";
+import { resolveSourceCredentials } from "../services/source-credentials";
+import {
+  publishDeployStatus,
+  reportDeployOutcome,
+} from "../services/github-status";
 import { BuildService } from "../services/build";
 import { DockerService } from "../services/docker";
 import { fireNotification } from "../services/notifier";
@@ -18,7 +23,7 @@ import { redis } from "../lib/redis";
 import { autoMapImageVolumes } from "../lib/volumes";
 import { acquireDeployLock, releaseDeployLock } from "../lib/deploy-lock";
 import { redactSecrets } from "../lib/redact";
-import { decrypt, decryptEnvVars } from "../lib/encryption";
+import { decryptEnvVars } from "../lib/encryption";
 import { emitDeployLog, emitDeployStatus } from "../lib/socket";
 
 import type { BuildType } from "@deploykit/shared";
@@ -65,6 +70,17 @@ export const startDeployWorker = () => {
         appendLog(deploymentId, safe, "build").catch(() => {});
       };
 
+      /**
+       * Commit SHAs, hoisted so the failure path can reconcile them too.
+       *
+       * `queuedHash` is what the producer recorded; `commitHash` is what the
+       * clone actually resolved. They differ when the branch moved while the
+       * job waited, and the status already published against the queued SHA
+       * then has to be closed out rather than left pending forever.
+       */
+      let queuedHash: string | null = null;
+      let commitHash = "latest";
+
       try {
         // Serialize deploys per app: a concurrent execution would remove this
         // one's freshly started container (and vice versa). Queued jobs wait
@@ -85,10 +101,13 @@ export const startDeployWorker = () => {
 
         if (!app) throw new Error("Application not found");
 
-        // Decrypt source token for private repos
-        const sourceToken = app.sourceToken
-          ? decrypt(app.sourceToken)
-          : undefined;
+        // Resolve the clone credential: a GitHub App installation token when
+        // the app is connected, otherwise its stored access token.
+        const credentials = await resolveSourceCredentials(app);
+        const sourceToken = credentials.token;
+        if (credentials.source === "github_app") {
+          log("Using GitHub App installation credentials.\n");
+        }
 
         // Resolve docker service (local or remote)
         const { docker: dockerService, isRemote } = await getDockerForServer(
@@ -108,8 +127,14 @@ export const startDeployWorker = () => {
 
         // Clone & Build
         let imageTag: string;
-        let commitHash = "latest";
         let commitMessage = "";
+        queuedHash =
+          (
+            await db.query.deployments.findFirst({
+              where: eq(deployments.id, deploymentId),
+              columns: { commitHash: true },
+            })
+          )?.commitHash ?? null;
 
         // Decrypt env vars early — needed as build args for frontends
         let envVars: Record<string, string> = {};
@@ -143,7 +168,13 @@ export const startDeployWorker = () => {
           commitHash = commitInfo.hash;
           commitMessage = commitInfo.message;
           await updateDeployment(deploymentId, { commitHash, commitMessage });
-          log(`Commit: ${commitHash} - ${commitMessage}\n`);
+          log(`Commit: ${shortSha(commitHash)} - ${commitMessage}\n`);
+          if (commitHash !== queuedHash) {
+            void publishDeployStatus(deploymentId, "pending", {
+              description: "Building",
+              sha: commitHash,
+            });
+          }
 
           // Resolve context path (monorepo support)
           const remoteContextPath = app.rootDirectory
@@ -155,7 +186,8 @@ export const startDeployWorker = () => {
 
           // Build on remote
           const imageName = `deploykit/${app.name}`;
-          imageTag = `${imageName}:${commitHash}`;
+          // The column keeps the full SHA; the tag stays readable.
+          imageTag = `${imageName}:${shortSha(commitHash, 12)}`;
           log(`\n── Building image on remote server ──────────\n`);
 
           // Write .env file so frontend frameworks pick up vars at build time
@@ -189,7 +221,13 @@ export const startDeployWorker = () => {
           commitHash = commitInfo.hash;
           commitMessage = commitInfo.message;
           await updateDeployment(deploymentId, { commitHash, commitMessage });
-          log(`Commit: ${commitHash} - ${commitMessage}\n`);
+          log(`Commit: ${shortSha(commitHash)} - ${commitMessage}\n`);
+          if (commitHash !== queuedHash) {
+            void publishDeployStatus(deploymentId, "pending", {
+              description: "Building",
+              sha: commitHash,
+            });
+          }
 
           // Resolve context path (monorepo support)
           const contextPath = app.rootDirectory
@@ -211,7 +249,7 @@ export const startDeployWorker = () => {
           imageTag = await buildService.build({
             contextPath,
             imageName,
-            tag: commitHash,
+            tag: shortSha(commitHash, 12),
             buildType: app.buildType as BuildType,
             dockerfilePath: app.dockerfilePath || "./Dockerfile",
             // Only explicit build args; runtime secrets are not baked into the
@@ -478,17 +516,33 @@ export const startDeployWorker = () => {
         }
         log("══════════════════════════════════════════════\n");
 
+        // Tell GitHub. Fire-and-forget: an outage there must never turn a
+        // deployment that worked into a failed one.
+        void reportDeployOutcome(deploymentId, applicationId, "success", {
+          description: appDomains[0]
+            ? `Deployed to ${appDomains[0].domain}`
+            : "Deployed",
+          sha: commitHash,
+        });
+        if (queuedHash && queuedHash !== commitHash) {
+          void publishDeployStatus(deploymentId, "success", {
+            description: "Superseded by a newer commit",
+            sha: queuedHash,
+          });
+        }
+
         // Notify external channels
         fireNotification({
           event: "deploy.success",
           projectId: cfg.projectId,
           title: `Deploy succeeded: ${cfg.name}`,
-          message: `${cfg.name} deployed successfully${commitHash !== "latest" ? ` (${commitHash})` : ""}.`,
+          message: `${cfg.name} deployed successfully${commitHash !== "latest" ? ` (${shortSha(commitHash)})` : ""}.`,
           meta: {
             applicationId: cfg.id,
             applicationName: cfg.name,
             deploymentId,
-            commitHash: commitHash !== "latest" ? commitHash : undefined,
+            commitHash:
+              commitHash !== "latest" ? shortSha(commitHash) : undefined,
             branch: overrideBranch || cfg.branch,
           },
         }).catch(() => {}); // fire-and-forget
@@ -520,6 +574,17 @@ export const startDeployWorker = () => {
           applicationId,
           error: errorMsg,
         });
+
+        void reportDeployOutcome(deploymentId, applicationId, "failure", {
+          description: `Deploy failed: ${errorMsg}`,
+          sha: commitHash,
+        });
+        if (queuedHash && queuedHash !== commitHash) {
+          void publishDeployStatus(deploymentId, "failure", {
+            description: "Deploy failed",
+            sha: queuedHash,
+          });
+        }
 
         // Notify external channels
         try {

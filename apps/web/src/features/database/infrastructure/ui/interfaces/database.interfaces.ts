@@ -2,7 +2,7 @@ type DatabaseStatusT = "running" | "stopped" | "error" | string;
 
 type DatabaseTypeT = "postgresql" | "mongodb" | "redis" | "mysql" | "mariadb";
 
-type TabT = "connection" | "backups" | "monitoring" | "logs";
+type TabT = "connection" | "backups" | "monitoring" | "logs" | "tasks";
 
 interface DatabaseI {
   id: string;

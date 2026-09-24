@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  CalendarClock,
   FileCode2,
   Globe,
   History,
@@ -20,6 +21,7 @@ const TABS: { id: ComposeTabT; label: string; icon: any }[] = [
   { id: "logs", label: "Logs", icon: Terminal },
   { id: "terminal", label: "Terminal", icon: TerminalSquare },
   { id: "monitoring", label: "Monitoring", icon: BarChart3 },
+  { id: "tasks", label: "Tasks", icon: CalendarClock },
 ];
 
 /** Sondeo del stack mientras despliega. */

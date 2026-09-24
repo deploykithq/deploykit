@@ -12,6 +12,11 @@ import { deployQueue } from "../lib/redis";
 import { encrypt, encryptEnvVars, decryptEnvVars } from "../lib/encryption";
 import { logAction } from "../lib/audit/audit";
 import { autoMapImageVolumes } from "../lib/volumes";
+import { toPublicApplication } from "../lib/sanitize";
+import {
+  getInstallationById,
+  installationCanAccessRepo,
+} from "../services/github-app";
 import {
   hasActiveDeployment,
   tryAcquireDeployLock,
@@ -36,6 +41,59 @@ import {
   RELATIVE_PATH_REGEX,
   HTTP_PATH_REGEX,
 } from "@deploykit/shared";
+
+/**
+ * Resolve a GitHub App connection into the columns an application stores.
+ *
+ * The repository is looked up through the installation rather than taken from
+ * the client: without that check, any operator could point their application
+ * at a repository id belonging to another project's installation and have
+ * DeployKit clone it for them.
+ */
+const resolveGithubConnection = async (
+  installationId: string,
+  repoId: number,
+) => {
+  const installation = await getInstallationById(installationId);
+  if (!installation) {
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      message: "GitHub App installation not found",
+    });
+  }
+
+  let repo;
+  try {
+    repo = await installationCanAccessRepo(installation, repoId);
+  } catch (err: any) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `Could not verify repository access: ${err?.message || "GitHub is unreachable"}`,
+    });
+  }
+
+  if (!repo) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message:
+        "That repository is not available to this GitHub App installation.",
+    });
+  }
+
+  return {
+    /** Exactly the application columns this connection sets. */
+    columns: {
+      githubInstallationId: installation.id,
+      githubRepoId: repo.id,
+      githubRepoFullName: repo.fullName,
+      repositoryUrl: repo.htmlUrl,
+      // A connected application authenticates through the App, so any token
+      // it was carrying is dead weight — and one secret fewer at rest.
+      sourceToken: null,
+    },
+    defaultBranch: repo.defaultBranch,
+  };
+};
 
 export const applicationRouter = router({
   byId: protectedProcedure
@@ -85,13 +143,32 @@ export const applicationRouter = router({
           code: "FORBIDDEN",
           message: "Operator access required for this project",
         });
-      const { sourceToken, volumes, ...rest } = input;
+      const {
+        sourceToken,
+        volumes,
+        githubInstallationId,
+        githubRepoId,
+        ...rest
+      } = input;
       if (volumes) validateVolumes(volumes);
+
+      const connection =
+        githubInstallationId && githubRepoId
+          ? await resolveGithubConnection(githubInstallationId, githubRepoId)
+          : null;
+
       const [app] = await ctx.db
         .insert(applications)
         .values({
           ...rest,
-          sourceToken: sourceToken ? encrypt(sourceToken) : undefined,
+          ...(connection?.columns ?? {}),
+          // A branch the caller left at the default follows the repository's.
+          ...(connection && (!rest.branch || rest.branch === "main")
+            ? { branch: connection.defaultBranch }
+            : {}),
+          ...(connection
+            ? {}
+            : { sourceToken: sourceToken ? encrypt(sourceToken) : undefined }),
           volumes: volumes && volumes.length > 0 ? volumes : undefined,
         })
         .returning();
@@ -106,7 +183,7 @@ export const applicationRouter = router({
           buildType: app!.buildType,
         },
       });
-      return app!;
+      return toPublicApplication(app!);
     }),
 
   update: protectedProcedure
@@ -128,6 +205,10 @@ export const applicationRouter = router({
         serverId: z.string().uuid().nullable().optional(),
         sourceToken: z.string().max(500).nullable().optional(),
         webhookSecret: z.string().min(16).max(200).nullable().optional(),
+        // GitHub App connection. Null on either field disconnects.
+        githubInstallationId: z.string().uuid().nullable().optional(),
+        githubRepoId: z.number().int().positive().nullable().optional(),
+        commitStatusEnabled: z.boolean().optional(),
         rootDirectory: z
           .string()
           .max(255)
@@ -180,15 +261,36 @@ export const applicationRouter = router({
         rootDirectory,
         startCommand,
         volumes,
+        githubInstallationId,
+        githubRepoId,
         ...data
       } = input;
+
+      // Connecting revalidates access; passing either field as null
+      // disconnects and leaves the app on whatever URL and token it has.
+      const connection =
+        githubInstallationId && githubRepoId
+          ? await resolveGithubConnection(githubInstallationId, githubRepoId)
+          : null;
+      const disconnecting =
+        githubInstallationId === null || githubRepoId === null;
+
       const [app] = await ctx.db
         .update(applications)
         .set({
           ...data,
-          ...(sourceToken !== undefined && {
-            sourceToken: sourceToken ? encrypt(sourceToken) : null,
+          ...(connection?.columns ?? {}),
+          ...(disconnecting && {
+            githubInstallationId: null,
+            githubRepoId: null,
+            githubRepoFullName: null,
           }),
+          // A connection already clears the token; an explicit token wins
+          // only when there is no connection being made in the same call.
+          ...(sourceToken !== undefined &&
+            !connection && {
+              sourceToken: sourceToken ? encrypt(sourceToken) : null,
+            }),
           ...(webhookSecret !== undefined && {
             webhookSecret: webhookSecret ? encrypt(webhookSecret) : null,
           }),
@@ -218,7 +320,7 @@ export const applicationRouter = router({
         resourceName: app!.name,
         metadata: { ...data, hasNewToken: sourceToken !== undefined },
       });
-      return app!;
+      return toPublicApplication(app!);
     }),
 
   delete: protectedProcedure
@@ -889,7 +991,7 @@ export const applicationRouter = router({
           code: "NOT_FOUND",
           message: "Application not found",
         });
-      return ctx.db.query.applications.findMany({
+      const previews = await ctx.db.query.applications.findMany({
         where: and(
           eq(applications.parentApplicationId, input.parentId),
           eq(applications.isPreview, true),
@@ -903,6 +1005,7 @@ export const applicationRouter = router({
         },
         orderBy: (a, { desc }) => [desc(a.createdAt)],
       });
+      return previews.map(toPublicApplication);
     }),
 
   deletePreview: protectedProcedure

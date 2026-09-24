@@ -1,6 +1,8 @@
 export * from "./users";
 export * from "./servers";
 export * from "./ssh-keys";
+export * from "./github-apps";
+export * from "./github-installations";
 export * from "./domains";
 export * from "./projects";
 export * from "./databases";
@@ -15,3 +17,5 @@ export * from "./project-members";
 export * from "./notification-channels";
 export * from "./compose-services";
 export * from "./compose-domains";
+export * from "./scheduled-tasks";
+export * from "./task-runs";

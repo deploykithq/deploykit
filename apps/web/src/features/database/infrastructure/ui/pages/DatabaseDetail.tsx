@@ -15,6 +15,8 @@ import {
   MonitoringTab,
 } from "@database/infrastructure/ui/components";
 
+import { TasksTab } from "@task/infrastructure/ui/components";
+
 import { useDatabaseActions } from "@database/infrastructure/ui/hooks/useDatabaseActions";
 import { useDatabaseDetail } from "@database/infrastructure/ui/hooks/useDatabaseDetail";
 
@@ -138,6 +140,9 @@ export const DatabaseDetailPage: React.FC = () => {
         <MonitoringTab databaseId={databaseId} />
       )}
       {activeTab === "logs" && <LogsTab db={db} />}
+      {activeTab === "tasks" && (
+        <TasksTab target={{ kind: "database", id: databaseId }} />
+      )}
 
       {/* Delete Confirm */}
       <ConfirmDialog

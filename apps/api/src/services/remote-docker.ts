@@ -1,7 +1,12 @@
 import { sshExec, type SSHConnectionOpts } from "./ssh";
-import { injectToken, sanitizeGitRef } from "./git";
+import { injectToken, sanitizeGitRef, credentialStoreLine } from "./git";
 import { shellEscape } from "../lib/shell";
 import { buildTraefikLabels } from "../lib/traefik";
+
+import { explainStartFailure } from "./docker";
+
+import type { OneOffSpecI } from "./task-runner";
+import type { OneOffResultI } from "./docker";
 
 /**
  * Executes Docker commands on a remote server via SSH.
@@ -463,14 +468,36 @@ export class RemoteDockerService {
       120_000,
     );
 
-    // Sanitize and clone (inject token for private repos)
-    const cloneUrl = injectToken(opts.url, opts.token);
     const safeBranch = sanitizeGitRef(opts.branch);
     await this.exec(`rm -rf ${shellEscape(opts.destPath)}`);
-    const result = await this.exec(
-      `git clone --depth 1 --branch ${shellEscape(safeBranch)} ${shellEscape(cloneUrl)} ${shellEscape(opts.destPath)} 2>&1`,
-      120_000,
-    );
+
+    // A credential in the clone URL sits in the remote process list for the
+    // whole clone, which can be minutes. Hand it to git through a 0600 file
+    // instead — the same trade runOneOff makes with --env-file — so the only
+    // exposure is an instantaneous printf. The file is removed whatever the
+    // clone does, and nothing is left in the repo's .git/config either.
+    const credential = opts.token
+      ? credentialStoreLine(opts.url, opts.token)
+      : null;
+
+    const cloneArgs = `clone --depth 1 --branch ${shellEscape(safeBranch)}`;
+    let cmd: string;
+
+    if (credential) {
+      const credPath = `/tmp/dk-clone-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.cred`;
+      const helper = shellEscape(`store --file=${credPath}`);
+      cmd =
+        `umask 077 && printf '%s\n' ${shellEscape(credential)} > ${shellEscape(credPath)} && ` +
+        `git -c credential.helper=${helper} ${cloneArgs} ` +
+        `${shellEscape(opts.url)} ${shellEscape(opts.destPath)} 2>&1; ` +
+        `__code=$?; rm -f ${shellEscape(credPath)}; exit $__code`;
+    } else {
+      // No token, or an SSH URL the server authenticates with its own key.
+      const cloneUrl = injectToken(opts.url, opts.token);
+      cmd = `git ${cloneArgs} ${shellEscape(cloneUrl)} ${shellEscape(opts.destPath)} 2>&1`;
+    }
+
+    const result = await this.exec(cmd, 120_000);
 
     if (result.code !== 0) {
       throw new Error(`Git clone failed: ${result.stderr || result.stdout}`);
@@ -491,7 +518,9 @@ export class RemoteDockerService {
       `cd ${shellEscape(repoPath)} && git log -1 --format=%s`,
     );
     return {
-      hash: hashResult.stdout.trim().slice(0, 12),
+      // Full 40-char SHA: GitHub's commit status API rejects an abbreviated
+      // one. Callers shorten it for display and for image tags.
+      hash: hashResult.stdout.trim(),
       message: msgResult.stdout.trim(),
     };
   }
@@ -514,6 +543,72 @@ export class RemoteDockerService {
     await this.exec(
       `printf '%s' ${shellEscape(lines)} > ${shellEscape(dirPath)}/.env`,
     );
+  }
+
+  /**
+   * Same contract as DockerService.runOneOff, over SSH.
+   *
+   * Env is written to a temp file and passed with --env-file, never as `-e`
+   * flags, so secrets stay out of the remote process list. Output is buffered
+   * and delivered when the command finishes — SSH exec here is not streaming,
+   * exactly as remote image builds already behave.
+   */
+  async runOneOff(
+    spec: OneOffSpecI,
+    onLog: (chunk: string) => void,
+  ): Promise<OneOffResultI> {
+    const envPath = `/tmp/${spec.name}.env`;
+    const envLines = spec.env.join("\n");
+
+    await this.exec(
+      `printf '%s' ${shellEscape(envLines)} > ${shellEscape(envPath)} && chmod 600 ${shellEscape(envPath)}`,
+    );
+
+    const flags = [
+      "--rm",
+      "--restart no",
+      `--name ${shellEscape(spec.name)}`,
+      `--network ${shellEscape(spec.networkName)}`,
+      `--env-file ${shellEscape(envPath)}`,
+      ...Object.entries(spec.labels).map(
+        ([k, v]) => `--label ${shellEscape(`${k}=${v}`)}`,
+      ),
+      ...(spec.volumes ?? []).map((v) => `-v ${shellEscape(v)}`),
+      ...(spec.cpuMillicores ? [`--cpus ${spec.cpuMillicores / 1000}`] : []),
+      ...(spec.memoryMb ? [`--memory ${spec.memoryMb}m`] : []),
+    ].join(" ");
+
+    const cmd =
+      this.docker(
+        `run ${flags} ${shellEscape(spec.image)} ${spec.cmd.map(shellEscape).join(" ")}`,
+      ) + `; __code=$?; rm -f ${shellEscape(envPath)}; exit $__code`;
+
+    let timedOut = false;
+    let result;
+    try {
+      result = await this.exec(cmd, spec.timeoutMs);
+    } catch (err: any) {
+      // sshExec rejects with "SSH command timed out"; kill the container so it
+      // does not outlive the run, then report the timeout.
+      timedOut = /timed out/i.test(err?.message ?? "");
+      if (!timedOut) throw err;
+      await this.exec(
+        `${this.docker(`kill ${shellEscape(spec.name)}`)} || true; rm -f ${shellEscape(envPath)}`,
+        30_000,
+      ).catch(() => {});
+      return { exitCode: -1, containerId: null, timedOut: true };
+    }
+
+    const combined = `${result.stdout}${result.stderr}`;
+    // `docker run` exits 125/126/127 when the container could not be started
+    // at all; say why in the same words the local transport uses.
+    if (result.code !== 0 && [125, 126, 127].includes(result.code)) {
+      onLog(`${explainStartFailure(new Error(combined), spec.image)}\n`);
+    } else if (combined) {
+      onLog(combined);
+    }
+
+    return { exitCode: result.code, containerId: null, timedOut };
   }
 }
 

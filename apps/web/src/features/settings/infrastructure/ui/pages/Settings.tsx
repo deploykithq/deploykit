@@ -1,10 +1,16 @@
 import {
   ProfileSection,
   PasswordSection,
+  ConfigTransferSection,
+  GitHubAppSection,
   InfoSection,
 } from "@settings/infrastructure/ui/components";
 
+import { useAuthStore } from "@lib/auth";
+
 export const SettingsPage: React.FC = () => {
+  const isAdmin = useAuthStore((s) => s.isAdmin)();
+
   return (
     <div className="space-y-6">
       <div>
@@ -17,6 +23,16 @@ export const SettingsPage: React.FC = () => {
       <div className="grid gap-6 grid-cols-1 md:grid-cols-2 max-w-6xl">
         <ProfileSection />
         <PasswordSection />
+        {isAdmin && (
+          <div className="col-span-1 md:col-span-2">
+            <GitHubAppSection />
+          </div>
+        )}
+        {isAdmin && (
+          <div className="col-span-1 md:col-span-2">
+            <ConfigTransferSection />
+          </div>
+        )}
         <div className="col-span-1 md:col-span-2">
           <InfoSection />
         </div>
