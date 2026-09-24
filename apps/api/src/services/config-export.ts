@@ -182,6 +182,18 @@ const gatherProjects = async (
   const stacksByProject = groupBy(stackRows, (row) => row.projectId);
   const membersByProject = groupBy(memberRows, (row) => row.projectId);
 
+  // The App's credentials are instance-level and tied to a webhook URL, so
+  // they are never exported. An importing instance re-links by repo id.
+  const connectedCount = appRows.filter((a) => a.githubInstallationId).length;
+  if (connectedCount > 0) {
+    warnings.push(
+      `${connectedCount} application(s) deploy through this instance's GitHub App. ` +
+        "The App itself is not exported; on import they are re-linked to an " +
+        "installation that can see the same repository, or fall back to their " +
+        "repository URL.",
+    );
+  }
+
   return projectRows.map((project) => {
     const appExports: AppExportI[] = (appsByProject.get(project.id) ?? []).map(
       (app) => ({

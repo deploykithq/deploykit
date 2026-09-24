@@ -107,7 +107,7 @@ export const SecurityTab: React.FC<SecurityTabPropsI> = memo(
             >
               {scanned.map((d) => (
                 <option key={d.id} value={d.id}>
-                  {(d.commitHash || d.id.slice(0, 8)) +
+                  {(d.commitHash?.slice(0, 7) || d.id.slice(0, 8)) +
                     ` · ${timeAgo(d.createdAt)}`}
                 </option>
               ))}

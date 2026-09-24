@@ -34,6 +34,7 @@ import {
   upsertTaskSchedule,
 } from "../lib/task-scheduler";
 import { listComposeServices } from "./compose";
+import { installationCanAccessRepo } from "./github-app";
 import {
   toApplicationValues,
   toDatabaseValues,
@@ -843,6 +844,8 @@ const runImport = async (opts: RunImportOptsI): Promise<ImportPlanI> => {
 
   const createdTasks: ScheduledTaskT[] = [];
   const createdDatabases: DatabaseT[] = [];
+  /** Applications carrying a GitHub repo id, to re-link after the commit. */
+  const createdGithubApps: { id: string; name: string; repoId: number }[] = [];
 
   await db.transaction(async (tx) => {
     for (const projectOp of ops) {
@@ -893,6 +896,14 @@ const runImport = async (opts: RunImportOptsI): Promise<ImportPlanI> => {
             ),
           )
           .returning();
+
+        if (app!.githubRepoId) {
+          createdGithubApps.push({
+            id: app!.id,
+            name: app!.name,
+            repoId: app!.githubRepoId,
+          });
+        }
 
         if (appOp.domains.length > 0)
           await tx
@@ -983,7 +994,71 @@ const runImport = async (opts: RunImportOptsI): Promise<ImportPlanI> => {
   for (const database of createdDatabases)
     if (database.backupEnabled) await upsertBackupSchedule(database);
 
-  return { ...plan, applied: true };
+  // Re-link imported applications to this instance's GitHub App, by repo id.
+  // Outside the transaction on purpose: it talks to GitHub, and a failure here
+  // must not roll back an import that is otherwise complete — the application
+  // simply falls back to its repository URL until someone reconnects it.
+  const relinkWarnings = await relinkGithubApplications(createdGithubApps);
+
+  return {
+    ...plan,
+    applied: true,
+    warnings: [...plan.warnings, ...relinkWarnings],
+  };
+};
+
+/**
+ * Point imported applications at whichever local installation can see their
+ * repository.
+ *
+ * The manifest carries GitHub's numeric repo id, never an installation: the
+ * installation is a uuid local to the instance that exported it. Exactly one
+ * candidate is required — with none there is nothing to link to, and with
+ * several the choice is genuinely ambiguous and belongs to a human.
+ */
+const relinkGithubApplications = async (
+  imported: { id: string; name: string; repoId: number }[],
+): Promise<string[]> => {
+  if (imported.length === 0) return [];
+
+  const warnings: string[] = [];
+  const installations = await db.query.githubInstallations.findMany();
+
+  if (installations.length === 0) {
+    return [
+      `${imported.length} application(s) were connected to a GitHub App on the source instance. ` +
+        "No App is configured here, so they will use their repository URL until you reconnect them.",
+    ];
+  }
+
+  for (const app of imported) {
+    const matches: typeof installations = [];
+    for (const installation of installations) {
+      try {
+        if (await installationCanAccessRepo(installation, app.repoId)) {
+          matches.push(installation);
+        }
+      } catch {
+        // An unreachable GitHub just means no match; the warning below says so.
+      }
+    }
+
+    if (matches.length === 1) {
+      await db
+        .update(applications)
+        .set({ githubInstallationId: matches[0]!.id })
+        .where(eq(applications.id, app.id));
+      continue;
+    }
+
+    warnings.push(
+      matches.length === 0
+        ? `${app.name}: no GitHub App installation here can see its repository, so it will use its repository URL until you reconnect it.`
+        : `${app.name}: more than one GitHub App installation can see its repository — connect it by hand.`,
+    );
+  }
+
+  return warnings;
 };
 
 export {

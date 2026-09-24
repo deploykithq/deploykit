@@ -55,6 +55,9 @@ const DEFAULT_BODY_LIMIT = 1_048_576;
 const TRPC_BODY_LIMIT = 4 * DEFAULT_BODY_LIMIT;
 const LARGE_BODY_PROCEDURES = new Set(["config.import"]);
 
+/** A request whose original bytes were retained for signature verification. */
+type WithRawBody = { rawBody?: Buffer };
+
 /** Resolve the client IP, trusting X-Forwarded-For only behind a known proxy. */
 function clientIp(req: { headers: Record<string, any>; ip: string }): string {
   if (TRUST_PROXY) {
@@ -190,14 +193,37 @@ async function main() {
       }
     }
 
-    // Webhook limit: 30 requests/min per IP
+    // Webhook limit: 120 requests/min per IP. A GitHub App delivers every
+    // repository of every installation through this one endpoint from a small
+    // IP range, and GitHub never retries a delivery it failed to hand over —
+    // a dropped request is a lost deploy, so the bucket has to be generous.
     if (req.url.startsWith("/api/webhooks")) {
-      if (await isRateLimited(`webhook:${ip}`, 30, 60_000)) {
+      if (await isRateLimited(`webhook:${ip}`, 120, 60_000)) {
         reply.status(429).send({ error: "Too many webhook requests." });
         return;
       }
     }
   });
+
+  // Webhook signatures are computed over the bytes the sender signed, so the
+  // raw buffer has to survive parsing. This replaces Fastify's built-in JSON
+  // parser with identical semantics and keeps the buffer only for webhooks —
+  // retaining 4 MiB on every config.import would be pure waste.
+  server.addContentTypeParser(
+    "application/json",
+    { parseAs: "buffer" },
+    (req, body: Buffer, done) => {
+      if (req.url.startsWith("/api/webhooks/")) {
+        (req as WithRawBody).rawBody = body;
+      }
+      try {
+        done(null, body.length ? JSON.parse(body.toString("utf8")) : {});
+      } catch (err: any) {
+        err.statusCode = 400;
+        done(err, undefined);
+      }
+    },
+  );
 
   // The tRPC plugin registers `/trpc/:path` with no route options of its own,
   // and an onRoute hook added before it is registered still fires for it.
@@ -223,12 +249,19 @@ async function main() {
   // Webhooks
   server.post("/api/webhooks/github", async (req, reply) => {
     try {
-      // Verify GitHub signature
-      const rawBody = JSON.stringify(req.body);
+      // Verify GitHub signature over the exact bytes GitHub signed
+      const rawBody = (req as WithRawBody).rawBody;
       const signature = req.headers["x-hub-signature-256"] as
         | string
         | undefined;
-      if (!webhookService.verifyGitHubSignature(rawBody, signature)) {
+      const authorized =
+        rawBody !== undefined &&
+        (await webhookService.verifyGitHubSignature(
+          rawBody,
+          signature,
+          req.headers as Record<string, string>,
+        ));
+      if (!authorized) {
         reply.status(401).send({ error: "Invalid webhook signature" });
         return;
       }

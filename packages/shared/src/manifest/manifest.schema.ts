@@ -167,6 +167,19 @@ const manifestApplicationSchema = z.object({
     .optional(),
   statusPageVisible: z.boolean().default(false),
   scanEnabled: z.boolean().nullable().optional(),
+  /**
+   * How a GitHub App-connected application is described for transport. Only
+   * GitHub's own stable identifiers travel: the installation is a local uuid,
+   * so an import re-links by repo id against whatever installations the
+   * destination instance happens to have. No credential is ever involved.
+   */
+  github: z
+    .object({
+      repoId: z.number().int().positive().nullable().optional(),
+      repoFullName: z.string().max(255).nullable().optional(),
+      commitStatus: z.boolean().default(true),
+    })
+    .optional(),
   server: serverRefSchema,
   env: envMapSchema.optional(),
   withheldSecrets: withheldSecretsSchema,

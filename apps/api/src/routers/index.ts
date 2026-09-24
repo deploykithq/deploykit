@@ -5,6 +5,7 @@ import { taskRouter } from "./task";
 import { logsRouter } from "./logs";
 import { configRouter } from "./config";
 import { auditRouter } from "./audit";
+import { githubRouter } from "./github";
 import { serverRouter } from "./server";
 import { sshKeyRouter } from "./ssh-key";
 import { statusRouter } from "./status";
@@ -25,6 +26,7 @@ export const appRouter = router({
   database: databaseRouter,
   server: serverRouter,
   sshKey: sshKeyRouter,
+  github: githubRouter,
   user: userRouter,
   audit: auditRouter,
   metrics: metricsRouter,

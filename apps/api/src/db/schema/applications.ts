@@ -4,6 +4,7 @@ import {
   varchar,
   text,
   integer,
+  bigint,
   boolean,
   jsonb,
   timestamp,
@@ -14,6 +15,7 @@ import { servers } from "./servers";
 import { domains } from "./domains";
 import { projects } from "./projects";
 import { deployments } from "./deployments";
+import { githubInstallations } from "./github-installations";
 
 const applications = pgTable("applications", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -29,6 +31,21 @@ const applications = pgTable("applications", {
   branch: varchar("branch", { length: 100 }).default("main").notNull(),
   sourceToken: text("source_token"),
   rootDirectory: varchar("root_directory", { length: 255 }),
+  // GitHub App: the installation that mints this app's clone credentials.
+  // ON DELETE SET NULL — losing the App must never delete an application; its
+  // deploys fall back to sourceToken, or fail with a readable message.
+  githubInstallationId: uuid("github_installation_id").references(
+    () => githubInstallations.id,
+    { onDelete: "set null" },
+  ),
+  // GitHub's numeric repo id. Webhook payloads are matched on this rather than
+  // on the URL, so a renamed or transferred repository keeps auto-deploying.
+  githubRepoId: bigint("github_repo_id", { mode: "number" }),
+  githubRepoFullName: varchar("github_repo_full_name", { length: 255 }),
+  // Publish commit statuses for this app's deploys (GitHub App path only)
+  commitStatusEnabled: boolean("commit_status_enabled")
+    .default(true)
+    .notNull(),
   // Per-application webhook secret (encrypted at rest); falls back to the
   // global WEBHOOK_SECRET when unset
   webhookSecret: text("webhook_secret"),
@@ -86,6 +103,9 @@ const applications = pgTable("applications", {
   parentApplicationId: uuid("parent_application_id"), // preview → parent link
   previewPrNumber: integer("preview_pr_number"), // PR/MR number
   previewBranch: varchar("preview_branch", { length: 100 }), // head branch of the PR
+  // Preview rows only: the PR comment this preview owns, so a redeploy edits
+  // that comment instead of posting a second one
+  previewPrCommentId: bigint("preview_pr_comment_id", { mode: "number" }),
   // Timestamps
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -99,6 +119,10 @@ const applicationRelations = relations(applications, ({ one, many }) => ({
   server: one(servers, {
     fields: [applications.serverId],
     references: [servers.id],
+  }),
+  githubInstallation: one(githubInstallations, {
+    fields: [applications.githubInstallationId],
+    references: [githubInstallations.id],
   }),
   deployments: many(deployments),
   domains: many(domains),

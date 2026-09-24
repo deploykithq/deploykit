@@ -24,7 +24,8 @@
       "@dashboard/*": ["./src/features/dashboard/*"],
       "@templates/*": ["./src/features/templates/*"],
       "@status/*": ["./src/features/status/*"],
-      "@task/*": ["./src/features/task/*"]
+      "@task/*": ["./src/features/task/*"],
+      "@github/*": ["./src/features/github/*"]
     }
   },
   "include": ["src/**/*"]

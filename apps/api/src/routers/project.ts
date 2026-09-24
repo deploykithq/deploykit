@@ -11,6 +11,7 @@ import {
 } from "../trpc";
 
 import { DockerService } from "../services/docker";
+import { toPublicProject } from "../lib/sanitize";
 
 import {
   projects,
@@ -35,8 +36,8 @@ export const projectRouter = router({
     if (ctx.user.role !== "admin") {
       const accessibleIds = await getAccessibleProjectIds(ctx.user);
       if (accessibleIds.length === 0) return [];
-      
-      return ctx.db.query.projects.findMany({
+
+      const rows = await ctx.db.query.projects.findMany({
         where: inArray(projects.id, accessibleIds),
         with: {
           applications: true,
@@ -44,15 +45,17 @@ export const projectRouter = router({
         },
         orderBy: (projects, { desc }) => [desc(projects.createdAt)],
       });
+      return rows.map(toPublicProject);
     }
 
-    return ctx.db.query.projects.findMany({
+    const rows = await ctx.db.query.projects.findMany({
       with: {
         applications: true,
         databases: true,
       },
       orderBy: (projects, { desc }) => [desc(projects.createdAt)],
     });
+    return rows.map(toPublicProject);
   }),
 
   byId: protectedProcedure
@@ -83,7 +86,7 @@ export const projectRouter = router({
           message: "Project not found",
         });
 
-      return project;
+      return toPublicProject(project);
     }),
 
   create: operatorProcedure

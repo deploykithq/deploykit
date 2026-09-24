@@ -91,6 +91,16 @@ export const createApplicationSchema = z.object({
   repositoryUrl: repositoryUrlSchema.optional(),
   branch: z.string().max(100).default("main"),
   sourceToken: z.string().max(500).optional(), // PAT for private repos
+  /**
+   * Connect through the instance's GitHub App instead of a pasted token.
+   *
+   * Only the installation and the repository's numeric id travel: the server
+   * resolves the repository URL and full name itself, and rejects a repository
+   * the installation cannot see. Letting the client name the URL would let it
+   * point an application at somebody else's repo.
+   */
+  githubInstallationId: z.string().uuid().optional(),
+  githubRepoId: z.number().int().positive().optional(),
   rootDirectory: z
     .string()
     .max(255)

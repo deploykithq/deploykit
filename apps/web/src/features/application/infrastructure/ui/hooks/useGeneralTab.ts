@@ -2,6 +2,8 @@ import { useRef, useState } from "react";
 
 import { trpc } from "@lib/trpc";
 
+import { useRepositoryPicker } from "@github/infrastructure/ui/hooks/useRepositoryPicker";
+
 import { INSTANCES_REFETCH_MS } from "@application/infrastructure/ui/constants/application.constants";
 
 /**
@@ -19,6 +21,14 @@ export const useGeneralTab = (app: any, applicationId: string) => {
   const [sourceToken, setSourceToken] = useState("");
   const [tokenDirty, setTokenDirty] = useState(false);
   const [rootDirectory, setRootDirectory] = useState(app.rootDirectory || "");
+
+  // GitHub App connection. `changingRepo` opens the picker for an app that is
+  // already connected; a connected app never shows the token field.
+  const connected = !!app.githubInstallationId;
+  const [changingRepo, setChangingRepo] = useState(false);
+  const githubStatus = trpc.github.status.useQuery();
+  const canConnect = githubStatus.data?.configured ?? false;
+  const picker = useRepositoryPicker(app.projectId, changingRepo);
   const [volumes, setVolumes] = useState<string[]>(
     (app.volumes as string[]) || [],
   );
@@ -135,6 +145,12 @@ export const useGeneralTab = (app: any, applicationId: string) => {
         repositoryUrl: repoUrl || undefined,
       }),
       ...(branch !== initial.branch && { branch }),
+      // Connecting revalidates access server-side and clears any stored token.
+      ...(changingRepo &&
+        picker.repoId && {
+          githubInstallationId: picker.installationId,
+          githubRepoId: Number(picker.repoId),
+        }),
       ...(buildType !== initial.buildType && { buildType }),
       ...(buildType === "dockerfile" &&
         (dockerfilePath !== initial.dockerfilePath ||
@@ -145,7 +161,7 @@ export const useGeneralTab = (app: any, applicationId: string) => {
         startCommand: startCommand || null,
       }),
       ...(port !== initial.port && { port: parseInt(port) || undefined }),
-      ...(tokenDirty && { sourceToken: sourceToken || null }),
+      ...(tokenDirty && !changingRepo && { sourceToken: sourceToken || null }),
       ...(rootDirectory !== initial.rootDirectory && {
         rootDirectory: rootDirectory || null,
       }),
@@ -208,6 +224,11 @@ export const useGeneralTab = (app: any, applicationId: string) => {
     });
 
   return {
+    connected,
+    canConnect,
+    changingRepo,
+    setChangingRepo,
+    picker,
     repoUrl,
     setRepoUrl,
     branch,

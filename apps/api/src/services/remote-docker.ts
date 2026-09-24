@@ -1,5 +1,5 @@
 import { sshExec, type SSHConnectionOpts } from "./ssh";
-import { injectToken, sanitizeGitRef } from "./git";
+import { injectToken, sanitizeGitRef, credentialStoreLine } from "./git";
 import { shellEscape } from "../lib/shell";
 import { buildTraefikLabels } from "../lib/traefik";
 
@@ -468,14 +468,36 @@ export class RemoteDockerService {
       120_000,
     );
 
-    // Sanitize and clone (inject token for private repos)
-    const cloneUrl = injectToken(opts.url, opts.token);
     const safeBranch = sanitizeGitRef(opts.branch);
     await this.exec(`rm -rf ${shellEscape(opts.destPath)}`);
-    const result = await this.exec(
-      `git clone --depth 1 --branch ${shellEscape(safeBranch)} ${shellEscape(cloneUrl)} ${shellEscape(opts.destPath)} 2>&1`,
-      120_000,
-    );
+
+    // A credential in the clone URL sits in the remote process list for the
+    // whole clone, which can be minutes. Hand it to git through a 0600 file
+    // instead — the same trade runOneOff makes with --env-file — so the only
+    // exposure is an instantaneous printf. The file is removed whatever the
+    // clone does, and nothing is left in the repo's .git/config either.
+    const credential = opts.token
+      ? credentialStoreLine(opts.url, opts.token)
+      : null;
+
+    const cloneArgs = `clone --depth 1 --branch ${shellEscape(safeBranch)}`;
+    let cmd: string;
+
+    if (credential) {
+      const credPath = `/tmp/dk-clone-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.cred`;
+      const helper = shellEscape(`store --file=${credPath}`);
+      cmd =
+        `umask 077 && printf '%s\n' ${shellEscape(credential)} > ${shellEscape(credPath)} && ` +
+        `git -c credential.helper=${helper} ${cloneArgs} ` +
+        `${shellEscape(opts.url)} ${shellEscape(opts.destPath)} 2>&1; ` +
+        `__code=$?; rm -f ${shellEscape(credPath)}; exit $__code`;
+    } else {
+      // No token, or an SSH URL the server authenticates with its own key.
+      const cloneUrl = injectToken(opts.url, opts.token);
+      cmd = `git ${cloneArgs} ${shellEscape(cloneUrl)} ${shellEscape(opts.destPath)} 2>&1`;
+    }
+
+    const result = await this.exec(cmd, 120_000);
 
     if (result.code !== 0) {
       throw new Error(`Git clone failed: ${result.stderr || result.stdout}`);
@@ -496,7 +518,9 @@ export class RemoteDockerService {
       `cd ${shellEscape(repoPath)} && git log -1 --format=%s`,
     );
     return {
-      hash: hashResult.stdout.trim().slice(0, 12),
+      // Full 40-char SHA: GitHub's commit status API rejects an abbreviated
+      // one. Callers shorten it for display and for image tags.
+      hash: hashResult.stdout.trim(),
       message: msgResult.stdout.trim(),
     };
   }

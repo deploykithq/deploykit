@@ -169,6 +169,13 @@
       "when": 1789934423000,
       "tag": "0023_add_scheduled_tasks",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789934424000,
+      "tag": "0024_add_github_app",
+      "breakpoints": true
     }
   ]
 }

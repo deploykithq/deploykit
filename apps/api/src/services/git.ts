@@ -65,10 +65,16 @@ class GitService {
     });
   }
 
-  // Get the latest commit info from a cloned repo.
+  /**
+   * Get the latest commit info from a cloned repo.
+   *
+   * The hash is the full 40-character SHA: GitHub's commit status API rejects
+   * an abbreviated one. Callers that display it (or build an image tag from
+   * it) shorten it themselves.
+   */
   getCommitInfo(repoPath: string): { hash: string; message: string } {
     try {
-      const hash = execSync("git rev-parse --short HEAD", {
+      const hash = execSync("git rev-parse HEAD", {
         cwd: repoPath,
         encoding: "utf-8",
       }).trim();
@@ -115,6 +121,34 @@ const injectToken = (url: string, token?: string): string => {
 };
 
 /**
+ * One line of a git credential store, or null when the URL is not HTTPS.
+ *
+ * Format is git's own: `https://user:password@host`. Used instead of putting
+ * the credential in the clone URL when the URL would otherwise be visible in a
+ * process list for the whole duration of the clone.
+ */
+const credentialStoreLine = (url: string, token: string): string | null => {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:") return null;
+    return `https://x-access-token:${encodeURIComponent(token)}@${parsed.host}`;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Abbreviate a commit SHA for anything a human or Docker reads.
+ *
+ * Deployments store the full 40-character SHA because GitHub's commit status
+ * API rejects an abbreviated one, so every display path shortens it here
+ * instead. Anything that isn't a full SHA (notably the "latest" placeholder
+ * and "unknown") is passed through untouched.
+ */
+const shortSha = (hash: string, len = 7): string =>
+  /^[0-9a-f]{40}$/i.test(hash) ? hash.slice(0, len) : hash;
+
+/**
  * Sanitize a git ref (branch/tag name) to prevent shell injection.
  * Git refs only allow: alphanumeric, -, _, ., /
  */
@@ -126,4 +160,10 @@ const sanitizeGitRef = (ref: string): string => {
   return sanitized;
 };
 
-export { GitService, injectToken, sanitizeGitRef };
+export {
+  GitService,
+  injectToken,
+  sanitizeGitRef,
+  shortSha,
+  credentialStoreLine,
+};
