@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0](https://github.com/deploykithq/deploykit/compare/v0.3.1...v0.4.0) (2026-09-24)
+
+
+### Features
+
+* export/import de la configuración de la instancia en YAML ([#16](https://github.com/deploykithq/deploykit/issues/16)) ([4cb1b84](https://github.com/deploykithq/deploykit/commit/4cb1b84b8306183c2fbc31f6b08be4ad2b724060))
+* github app integration ([#17](https://github.com/deploykithq/deploykit/issues/17)) ([78a4063](https://github.com/deploykithq/deploykit/commit/78a4063139db0793f840802b19ee3602c1445d42))
+* scheduled tasks ([#14](https://github.com/deploykithq/deploykit/issues/14)) ([5fae4f6](https://github.com/deploykithq/deploykit/commit/5fae4f668fb90b01e8d2e31768857c8d8a70697a))
+
+
+### Bug Fixes
+
+* detect WEB_URL from the domain ([5e8e666](https://github.com/deploykithq/deploykit/commit/5e8e66657421cf2648465436d3c3f6872fa8da8d))
+
 ## [0.3.1](https://github.com/deploykithq/deploykit/compare/v0.3.0...v0.3.1) (2026-09-20)
 
 
