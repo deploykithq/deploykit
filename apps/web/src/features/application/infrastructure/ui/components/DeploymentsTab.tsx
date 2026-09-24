@@ -96,7 +96,7 @@ export const DeploymentsTab: React.FC<DeploymentsTabPropsI> = memo(
 
                           {d.commitHash && (
                             <span className="text-xs font-mono text-text-muted">
-                              {d.commitHash}
+                              {d.commitHash.slice(0, 7)}
                             </span>
                           )}
 
@@ -148,7 +148,7 @@ export const DeploymentsTab: React.FC<DeploymentsTabPropsI> = memo(
                             e.stopPropagation();
                             setRollbackTarget(d.id);
                           }}
-                          title={`Roll back to ${d.commitHash || d.id.slice(0, 8)}`}
+                          title={`Roll back to ${d.commitHash?.slice(0, 7) || d.id.slice(0, 8)}`}
                           disabled={rollingBack}
                         >
                           <RotateCcw
@@ -209,7 +209,7 @@ export const DeploymentsTab: React.FC<DeploymentsTabPropsI> = memo(
           title="Roll back deployment"
           description={
             rollbackTargetDeploy
-              ? `Start the container using the image from commit ${rollbackTargetDeploy.commitHash || rollbackTargetDeploy.id.slice(0, 8)}. No rebuild required — the existing image is reused.${(app?.domains?.length ?? 0) > 0 ? " Traefik routing will be restored automatically." : ""}`
+              ? `Start the container using the image from commit ${rollbackTargetDeploy.commitHash?.slice(0, 7) || rollbackTargetDeploy.id.slice(0, 8)}. No rebuild required — the existing image is reused.${(app?.domains?.length ?? 0) > 0 ? " Traefik routing will be restored automatically." : ""}`
               : "Roll back to this deployment? No rebuild required."
           }
           confirmText="Roll back"

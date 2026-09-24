@@ -37,6 +37,16 @@ const SettingsPage = lazy(() =>
     default: m.SettingsPage,
   })),
 );
+const GitHubAppPage = lazy(() =>
+  import("@github/infrastructure/ui/pages/GitHubApp").then((m) => ({
+    default: m.GitHubAppPage,
+  })),
+);
+const GitHubCallbackPage = lazy(() =>
+  import("@github/infrastructure/ui/pages/GitHubCallback").then((m) => ({
+    default: m.GitHubCallbackPage,
+  })),
+);
 const AuditLogPage = lazy(() =>
   import("@audit/infrastructure/ui/pages/AuditLog").then((m) => ({
     default: m.AuditLogPage,
@@ -98,6 +108,13 @@ export const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/login",
   component: LoginPage,
+  validateSearch: (search: Record<string, unknown>): { redirect?: string } => {
+    const raw = typeof search.redirect === "string" ? search.redirect : "";
+    // Same-origin only: a path starting with a single slash. "//evil.com" and
+    // "https://evil.com" would both be open redirects after sign-in.
+    const safe = /^\/(?!\/)/.test(raw) ? raw : undefined;
+    return { redirect: safe };
+  },
   beforeLoad: () => {
     if (useAuthStore.getState().isAuthenticated()) {
       throw redirect({ to: "/" });
@@ -122,7 +139,9 @@ export const authLayoutRoute = createRoute({
   component: AppLayout,
   beforeLoad: ({ location }) => {
     if (!useAuthStore.getState().isAuthenticated()) {
-      throw redirect({ to: "/login", search: { redirect: location.pathname } });
+      // href, not pathname: an OAuth-style callback carries its parameters in
+      // the query string, and dropping them would strand the flow.
+      throw redirect({ to: "/login", search: { redirect: location.href } });
     }
   },
 });
@@ -161,6 +180,41 @@ export const settingsRoute = createRoute({
   getParentRoute: () => authLayoutRoute,
   path: "/settings",
   component: withSuspense(SettingsPage),
+});
+
+export const githubAppRoute = createRoute({
+  getParentRoute: () => authLayoutRoute,
+  path: "/settings/github",
+  component: withSuspense(GitHubAppPage),
+});
+
+/**
+ * Where GitHub redirects back to after creating or installing the App.
+ *
+ * Under the auth layout because it calls admin-only procedures, and the
+ * one-time state is bound to the admin who started the flow.
+ */
+export const githubCallbackRoute = createRoute({
+  getParentRoute: () => authLayoutRoute,
+  path: "/settings/github/callback",
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): {
+    code?: string;
+    state?: string;
+    installation_id?: string;
+    setup_action?: string;
+  } => ({
+    code: typeof search.code === "string" ? search.code : undefined,
+    state: typeof search.state === "string" ? search.state : undefined,
+    installation_id:
+      search.installation_id === undefined
+        ? undefined
+        : String(search.installation_id),
+    setup_action:
+      typeof search.setup_action === "string" ? search.setup_action : undefined,
+  }),
+  component: withSuspense(GitHubCallbackPage),
 });
 
 export const auditLogRoute = createRoute({
@@ -219,6 +273,8 @@ const routeTree = rootRoute.addChildren([
     sshKeysRoute,
     usersRoute,
     settingsRoute,
+    githubAppRoute,
+    githubCallbackRoute,
     auditLogRoute,
     alertsRoute,
     templatesRoute,

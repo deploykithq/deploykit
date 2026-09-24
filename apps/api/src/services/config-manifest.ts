@@ -143,6 +143,12 @@ const MANIFEST_COLUMNS = {
     "scanEnabled",
     "previewEnabled",
     "previewDomain",
+    // GitHub's own identifiers for the repo, so an import can re-link the app
+    // to whatever installation on the destination instance can see it. The
+    // installation's local uuid is excluded — it means nothing elsewhere.
+    "githubRepoId",
+    "githubRepoFullName",
+    "commitStatusEnabled",
   ],
   databases: [
     "name",
@@ -204,6 +210,10 @@ const EXCLUDED_COLUMNS = {
     "parentApplicationId",
     "previewPrNumber",
     "previewBranch",
+    "previewPrCommentId",
+    // Local uuid of a GitHub App installation: meaningless on another
+    // instance, which re-links by githubRepoId instead.
+    "githubInstallationId",
     "createdAt",
     "updatedAt",
   ],
@@ -368,6 +378,15 @@ const buildManifest = (
               : null,
           statusPageVisible: app.row.statusPageVisible,
           scanEnabled: app.row.scanEnabled,
+          // Only worth a block for an app actually wired to the GitHub App.
+          github:
+            app.row.githubRepoId || app.row.githubRepoFullName
+              ? compact({
+                  repoId: app.row.githubRepoId,
+                  repoFullName: app.row.githubRepoFullName,
+                  commitStatus: app.row.commitStatusEnabled,
+                })
+              : null,
           server: serverNameOf(app.row.serverId, opts.serverNames),
           env: envSplit.env,
           withheldSecrets: withheld.sort(),
@@ -599,6 +618,10 @@ const toApplicationValues = (
   scanEnabled: app.scanEnabled ?? null,
   previewEnabled: app.preview?.enabled ?? false,
   previewDomain: app.preview?.domain ?? null,
+  // The installation is resolved after insert, by repo id — see config-import.
+  githubRepoId: app.github?.repoId ?? null,
+  githubRepoFullName: app.github?.repoFullName ?? null,
+  commitStatusEnabled: app.github?.commitStatus ?? true,
 });
 
 interface DatabaseInsertOptsI {

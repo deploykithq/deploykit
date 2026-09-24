@@ -65,6 +65,10 @@ type AuditActionT =
   // Instance configuration export / import
   | "config.export"
   | "config.import"
+  // GitHub App
+  | "github_app.create"
+  | "github_app.delete"
+  | "github_app.sync"
   // Project members
   | "project_member.add"
   | "project_member.update"
@@ -79,6 +83,7 @@ type ResourceTypeT =
   | "ssh_key"
   | "user"
   | "notification_channel"
-  | "task";
+  | "task"
+  | "github_app";
 
 export type { AuditActionT, ResourceTypeT };

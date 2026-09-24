@@ -6,6 +6,8 @@ import { Input } from "@shared/components/input";
 import { Modal } from "@shared/components/modal";
 import { Select } from "@shared/components/select";
 
+import { RepositoryPicker } from "@github/infrastructure/ui/components/RepositoryPicker";
+
 import { ServerSelector } from "@project/infrastructure/ui/components/ServerSelector";
 
 import { useNewApplicationForm } from "@project/infrastructure/ui/hooks/useNewApplicationForm";
@@ -47,6 +49,11 @@ export const NewApplicationModal: React.FC<NewApplicationModalPropsI> = memo(
       setRootDirectory,
       creating,
       isGitSource,
+      appConfigured,
+      sourceMode,
+      setSourceMode,
+      usePicker,
+      picker,
       handleSubmit,
     } = useNewApplicationForm(projectId, onCreated);
 
@@ -66,7 +73,23 @@ export const NewApplicationModal: React.FC<NewApplicationModalPropsI> = memo(
             onChange={(e) => setSourceType(e.target.value as SourceType)}
             options={SOURCE_TYPE_OPTIONS}
           />
-          {isGitSource && (
+          {usePicker && (
+            <>
+              <RepositoryPicker
+                picker={picker}
+                branch={branch}
+                onBranchChange={setBranch}
+              />
+              <button
+                type="button"
+                onClick={() => setSourceMode("url")}
+                className="text-[11px] text-accent hover:underline"
+              >
+                Use a repository URL and access token instead
+              </button>
+            </>
+          )}
+          {isGitSource && !usePicker && (
             <>
               <Input
                 label="Repository URL"
@@ -86,6 +109,19 @@ export const NewApplicationModal: React.FC<NewApplicationModalPropsI> = memo(
                 onChange={(e) => setSourceToken(e.target.value)}
                 placeholder="ghp_xxxxxxxxxxxx"
               />
+              {appConfigured && sourceType === "github" && (
+                <button
+                  type="button"
+                  onClick={() => setSourceMode("github_app")}
+                  className="text-[11px] text-accent hover:underline -mt-2"
+                >
+                  Pick a repository through the GitHub App instead
+                </button>
+              )}
+            </>
+          )}
+          {isGitSource && (
+            <>
               <Input
                 label="Root Directory"
                 value={rootDirectory}

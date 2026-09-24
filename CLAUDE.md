@@ -184,6 +184,52 @@ can print a connection string — which is also why the Socket.IO room
 Only local runs stream line by line; a remote (SSH) run delivers its output
 when the command finishes, exactly as remote image builds already behave.
 
+### GitHub App
+
+An application reaches a private repository one of **two ways**, and both stay
+supported: a **pasted PAT** (`applications.source_token`, encrypted) or the
+instance's **GitHub App** (`applications.github_installation_id`). The PAT is
+what GitLab, Gitea and self-hosted git use; the App is preferred for github.com.
+`services/source-credentials.ts` picks between them at deploy time — it is the
+only place that decides, and `deploy.worker.ts` just asks it.
+
+- **The App is registered per install, through the manifest flow**
+  (`services/github-manifest.ts`). A self-hosted PaaS cannot share a central
+  App: the webhook has to reach *this* instance. The manifest freezes the
+  webhook and redirect URLs into the App, both derived from **`WEB_URL` and
+  never from the `Host` header** — a forged header would redirect GitHub's
+  one-time code elsewhere. `WEB_URL` is therefore load-bearing here, and
+  `startManifest` refuses a URL GitHub could not deliver to.
+- **Installation tokens expire in an hour**, so they are cached in Redis
+  (encrypted, like every other secret) and the in-process promise map in
+  `services/github-app.ts` gives single-flight: N concurrent deploys of one
+  installation mint once. That map is registered *before* the function's first
+  `await` — checking it after one lets every caller race past.
+- **Repositories are identified by GitHub's numeric id**, not by URL.
+  `matchApplications` in `services/webhook.ts` matches a connected app on
+  installation + repo id and an unconnected one on the normalized URL, and the
+  two rules are deliberately disjoint: a connected app is never matched by URL,
+  so a repository webhook left over from the old setup cannot deploy it twice.
+- **Signature verification accepts either secret** — the App's own, or the
+  instance-wide `WEBHOOK_SECRET` — computed over the **raw request bytes**
+  (`index.ts` retains them for `/api/webhooks/*` only). Hashing a re-serialized
+  body silently dropped deliveries whose JSON escaping differed.
+- **`deployments.commit_hash` holds the full 40-character SHA**, because
+  GitHub's statuses API rejects an abbreviated one. Everything a human or
+  Docker sees shortens it with `shortSha()` from `services/git.ts` — including
+  the image tag, which would otherwise be 40 characters long.
+- **Nothing in `services/github-status.ts` may fail a deploy.** Every entry
+  point swallows its errors, and callers use `void`: GitHub being unreachable
+  must never turn a deployment that worked into a failed one. Previews report
+  under the *parent's* context name, so branch protection sees one stable check
+  per application rather than one per pull request.
+- A preview inherits the parent's installation instead of copying its encrypted
+  token, so with the App a preview stores no secret at all.
+- The App itself is **never exported** by the configuration manifest (it is
+  instance credentials bound to a webhook URL). Applications export
+  `github.repoId` / `repoFullName`, and an import re-links them to whichever
+  local installation can see that repository — or warns when none or several can.
+
 ### Frontend structure (`apps/web/src/`)
 
 - **`router.tsx`** — Route definitions with lazy loading and auth guards via `beforeLoad`

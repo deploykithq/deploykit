@@ -194,10 +194,9 @@ docker compose -f docker-compose.prod.yml up -d --build
 | `ENCRYPTION_KEY` | 64-char hex key for AES-256-GCM (`openssl rand -hex 32`) | — |
 | `API_PORT` | API server port | `3001` |
 | `WEB_PORT` | Dashboard port | `5173` |
-| `WEBHOOK_SECRET` | HMAC secret for GitHub/GitLab webhooks | — |
+| `WEBHOOK_SECRET` | HMAC secret for GitHub/GitLab webhooks. Optional once a GitHub App is registered | — |
+| `WEB_URL` | Public URL of the dashboard. Required to register a GitHub App | `http://localhost:5173` |
 | `AUDIT_RETENTION_DAYS` | Days to keep audit logs before cleanup | `90` |
-| `GITHUB_CLIENT_ID` | GitHub OAuth app ID (optional) | — |
-| `GITHUB_CLIENT_SECRET` | GitHub OAuth secret (optional) | — |
 
 ---
 
