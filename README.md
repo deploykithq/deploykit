@@ -23,6 +23,8 @@
 
 ---
 
+https://github.com/user-attachments/assets/5570d7f3-c9fd-4012-a8d1-f227df413fdd
+
 ## Installation
 
 DeployKit is installed and managed with the [`@deploykit/cli`](https://github.com/deploykithq/deploykit-cli) command-line tool. Install it on your VPS (Ubuntu/Debian/RHEL/Alpine) with Node.js >= 20:
