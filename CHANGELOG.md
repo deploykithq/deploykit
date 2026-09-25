@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1](https://github.com/deploykithq/deploykit/compare/v0.4.0...v0.4.1) (2026-09-25)
+
+
+### Documentation
+
+* added video demon ([004481f](https://github.com/deploykithq/deploykit/commit/004481f62f2f3b323e1bbe0be57d4cdfd6d7bb94))
+* update README ([79eb55d](https://github.com/deploykithq/deploykit/commit/79eb55d03c8065b5e1990db00458e220db62123b))
+
 ## [0.4.0](https://github.com/deploykithq/deploykit/compare/v0.3.1...v0.4.0) (2026-09-24)
 
 
