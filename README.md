@@ -1,15 +1,22 @@
+<h1 align="center">Your own cloud, one <code>git push</code> away.</h1>
+
 <p align="center">
-  <a href="https://dokploy.com">
-    <img src=".github/images/banner.png" alt="Dokploy - Open Source Alternative to Vercel, Heroku and Netlify." width="100%"  />
-  </a>
-  <p align="center">Self-hosted PaaS for deploying apps and databases on your own infrastructure.<br>Open-source alternative to Vercel, Netlify and Heroku.</p>
+  Deploy apps, databases and Docker Compose stacks on your own servers —<br>
+  auto-builds, SSL, real-time logs, backups and previews. MIT licensed, zero vendor lock-in.
+</p>
+
+<p align="center">
+  <a href="https://github.com/deploykithq/deploykit/releases"><img src="https://img.shields.io/github/v/release/deploykithq/deploykit?style=flat-square&color=6366f1" alt="Latest release" /></a>
+  <a href="https://github.com/deploykithq/deploykit/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/deploykithq/deploykit/ci.yml?branch=master&style=flat-square&label=CI" alt="CI" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/deploykithq/deploykit?style=flat-square" alt="MIT license" /></a>
+  <a href="https://github.com/deploykithq/deploykit/stargazers"><img src="https://img.shields.io/github/stars/deploykithq/deploykit?style=flat-square&color=f5c518" alt="GitHub stars" /></a>
 </p>
 
 <p align="center">
   <a href="#installation">Installation</a> &middot;
+  <a href="#why-deploykit">Why DeployKit</a> &middot;
   <a href="#features">Features</a> &middot;
   <a href="#development">Development</a> &middot;
-  <a href="#tech-stack">Tech Stack</a> &middot;
   <a href="#configuration">Configuration</a> &middot;
   <a href="#license">License</a>
 </p>
@@ -85,6 +92,17 @@ User-deployed containers are not affected by uninstall.
 
 ---
 
+## Why DeployKit
+
+- **Runs on a $5 VPS.** 1 vCPU and 1 GB of RAM are enough to host the panel and your apps on the same box — or add more servers over SSH later.
+- **Access control built for teams.** Global Admin / Operator / Viewer roles plus per-project roles, secrets hidden from anyone who shouldn't see them, and every action in the audit log.
+- **Your whole instance as a YAML file.** Export projects, apps, databases and stacks, keep the file in Git, and import it on a fresh server.
+- **First-class GitHub App.** Register one for your instance in a couple of clicks: private repos without personal tokens, commit statuses on every deploy, and preview environments for pull requests.
+- **More than containers.** Compose stacks, one-click templates, cron jobs and one-off commands, autoscaling, vulnerability scanning and a public status page ship in the box.
+- **No lock-in.** It's plain Docker, Compose and Traefik underneath. Uninstall DeployKit and your containers keep running.
+
+---
+
 ## Features
 
 | Feature | Description |
@@ -105,9 +123,14 @@ User-deployed containers are not affected by uninstall.
 | **Rollbacks** | One-click rollback to any previous deployment |
 | **Audit Logs** | Full action history with automatic retention cleanup |
 | **Notifications** | Discord, Slack, Telegram, Email, and Webhook channels |
-| **Templates** | Select from a variety of ready-to-deploy templates from different services |
+| **Docker Compose Stacks** | Deploy a whole `docker-compose.yml` as a unit, with routing, logs and metrics per service |
+| **One-Click Templates** | Ready-to-deploy stacks from the [community catalogue](https://github.com/deploykithq/deploykit-templates), with secrets generated per install |
+| **GitHub App** | Private repos without personal tokens, commit statuses and PR previews |
+| **Scheduled Tasks** | Cron jobs and one-off commands (migrations, scripts) in isolated containers |
+| **Vulnerability Scanning** | Optional Trivy scan of every built image, without ever blocking a deploy |
+| **Config Export/Import** | Move an entire instance between servers as a single YAML file |
 | **Autoscaling** | Automatically scale replicas by average CPU/memory load |
-| **Status Page** | Publish a public, no-login status page showing the live state and uptime of selected applications in this project. |
+| **Status Page** | Publish a public, no-login status page showing the live state and uptime of selected applications |
 
 ---
 
@@ -122,7 +145,7 @@ User-deployed containers are not affected by uninstall.
 ### Setup
 
 ```bash
-git clone https://github.com/shakarr/deploykit.git
+git clone https://github.com/deploykithq/deploykit.git
 cd deploykit
 pnpm install
 ```
@@ -143,18 +166,6 @@ pnpm dev                      # Start API + Web dev servers
 | Dashboard | http://localhost:5173   |
 | API       | http://localhost:3001   |
 | Traefik   | http://localhost:8080   |
-
-### Available Scripts
-
-| Command | Description |
-|---------|-------------|
-| `pnpm dev` | Start all services in development mode |
-| `pnpm dev:api` | Start only the API server |
-| `pnpm dev:web` | Start only the web dashboard |
-| `pnpm build` | Build all packages for production |
-| `pnpm db:migrate` | Apply pending database migrations (hand-written SQL, see CONTRIBUTING.md) |
-| `pnpm db:studio` | Open Drizzle Studio (database GUI) |
-| `pnpm lint` | Run type checking across all packages |
 
 ### Manual Production Deploy
 
