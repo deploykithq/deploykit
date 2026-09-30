@@ -102,6 +102,8 @@ const appRow = (over: Partial<ApplicationT> = {}): ApplicationT => ({
   previewPrNumber: null,
   previewBranch: null,
   previewPrCommentId: null,
+  maintenanceEnabled: false,
+  maintenanceMessage: null,
   createdAt: NOW,
   updatedAt: NOW,
   ...over,
