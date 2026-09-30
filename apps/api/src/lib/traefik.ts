@@ -39,10 +39,14 @@ const sanitizeRouterName = (name: string): string =>
  *
  * @param baseName  router name prefix — unique per service (e.g. `dk-blog` or
  *                  `dk-blog-web`). Extra domains get a numeric suffix.
+ * @param opts.priority  explicit router priority. Unset, Traefik ranks by rule
+ *                  length; the maintenance container sets a high one so it
+ *                  wins over the app's own routers for the same host.
  */
 const buildTraefikLabels = (
   baseName: string,
   domains: TraefikDomainI[],
+  opts: { priority?: number } = {},
 ): Record<string, string> => {
   const labels: Record<string, string> = {};
   if (domains.length === 0) return labels;
@@ -63,6 +67,13 @@ const buildTraefikLabels = (
     labels[`traefik.http.services.${router}.loadbalancer.server.port`] = String(
       d.port,
     );
+    // Each domain declares its own service, so with two or more of them
+    // Traefik cannot pick one implicitly and drops every router of the
+    // container ("cannot be linked automatically with multiple Services").
+    labels[`traefik.http.routers.${router}.service`] = router;
+    if (opts.priority !== undefined) {
+      labels[`traefik.http.routers.${router}.priority`] = String(opts.priority);
+    }
 
     if (d.https) {
       labels[`traefik.http.routers.${router}.entrypoints`] = "websecure";
@@ -71,8 +82,14 @@ const buildTraefikLabels = (
       // Plain HTTP on the same rule, redirected — otherwise port 80 404s.
       labels[`traefik.http.routers.${router}-http.rule`] = rule;
       labels[`traefik.http.routers.${router}-http.entrypoints`] = "web";
+      labels[`traefik.http.routers.${router}-http.service`] = router;
       labels[`traefik.http.routers.${router}-http.middlewares`] =
         `${router}-redirect`;
+      if (opts.priority !== undefined) {
+        labels[`traefik.http.routers.${router}-http.priority`] = String(
+          opts.priority,
+        );
+      }
       labels[
         `traefik.http.middlewares.${router}-redirect.redirectscheme.scheme`
       ] = "https";

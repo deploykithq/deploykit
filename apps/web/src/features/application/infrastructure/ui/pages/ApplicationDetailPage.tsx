@@ -7,6 +7,7 @@ import {
   Square,
   Rocket,
   Trash2,
+  Construction,
 } from "lucide-react";
 
 import { Button } from "@shared/components/button";
@@ -14,6 +15,7 @@ import { ConfirmDialog } from "@shared/components/confirm-dialog";
 import { Input } from "@shared/components/input";
 import { Modal } from "@shared/components/modal";
 import { StatusBadge } from "@shared/components/status-badge";
+import { Textarea } from "@shared/components/textarea";
 import {
   GeneralTab,
   EnvVarsTab,
@@ -59,6 +61,12 @@ export const ApplicationDetailPage = () => {
     stopMutation,
     deleteMutation,
     deployBranchMutation,
+    showMaintenanceModal,
+    setShowMaintenanceModal,
+    openMaintenanceModal,
+    maintenanceMessage,
+    setMaintenanceMessage,
+    maintenanceMutation,
   } = useApplicationDetail();
 
   if (isLoading)
@@ -81,6 +89,12 @@ export const ApplicationDetailPage = () => {
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-semibold">{app.name}</h1>
             <StatusBadge status={app.status} />
+            {app.maintenanceEnabled && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-warning bg-warning/10 px-2 py-0.5 rounded-full">
+                <Construction className="w-3 h-3" />
+                Maintenance
+              </span>
+            )}
           </div>
           <p className="text-xs text-text-muted mt-0.5 font-mono">
             {app.sourceType} · {app.buildType} · {app.branch}
@@ -97,6 +111,18 @@ export const ApplicationDetailPage = () => {
             >
               <Trash2 className="w-3.5 h-3.5 text-danger" />
             </Button>
+
+            {!app.maintenanceEnabled && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={openMaintenanceModal}
+                title="Show a maintenance page on this app's domains"
+              >
+                <Construction className="w-3.5 h-3.5" />
+                Maintenance
+              </Button>
+            )}
 
             {app.status === "running" && (
               <Button
@@ -157,6 +183,50 @@ export const ApplicationDetailPage = () => {
           </div>
         )}
       </div>
+
+      {app.maintenanceEnabled && (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3">
+          <Construction className="w-4 h-4 text-warning shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-warning">
+              Maintenance mode is on
+            </p>
+            <p className="text-xs text-text-secondary mt-0.5">
+              Visitors to this app's domains see a maintenance page (HTTP 503).
+              It stays on across deploys until you turn it off.
+            </p>
+            {maintenanceMutation.error && !showMaintenanceModal && (
+              <p className="text-xs text-danger mt-1">
+                {maintenanceMutation.error.message}
+              </p>
+            )}
+          </div>
+          {canOperate && (
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={openMaintenanceModal}
+              >
+                Edit message
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() =>
+                  maintenanceMutation.mutate({
+                    id: applicationId,
+                    enabled: false,
+                  })
+                }
+                disabled={maintenanceMutation.isPending}
+              >
+                {maintenanceMutation.isPending ? "Turning off…" : "Turn off"}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Tab bar */}
       <div className="flex gap-1 border-b border-border pb-px overflow-x-auto scrollbar-none">
@@ -229,6 +299,64 @@ export const ApplicationDetailPage = () => {
         confirmText="Delete Application"
         isPending={deleteMutation.isPending}
       />
+
+      <Modal
+        open={showMaintenanceModal}
+        onClose={() => setShowMaintenanceModal(false)}
+        title={
+          app.maintenanceEnabled ? "Maintenance message" : "Enable maintenance mode"
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-text-secondary">
+            Every domain of this app will answer with a maintenance page
+            (HTTP 503) until you turn it off. The app keeps running and can be
+            deployed in the meantime.
+          </p>
+
+          <Textarea
+            label="Message (optional)"
+            value={maintenanceMessage}
+            onChange={(e) => setMaintenanceMessage(e.target.value)}
+            placeholder="We are performing scheduled maintenance. We will be back shortly."
+            rows={3}
+            maxLength={500}
+            autoFocus
+          />
+
+          {maintenanceMutation.error && (
+            <p className="text-xs text-danger">
+              {maintenanceMutation.error.message}
+            </p>
+          )}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <Button
+              variant="ghost"
+              onClick={() => setShowMaintenanceModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() =>
+                maintenanceMutation.mutate({
+                  id: applicationId,
+                  enabled: true,
+                  message: maintenanceMessage.trim() || undefined,
+                })
+              }
+              disabled={maintenanceMutation.isPending}
+            >
+              <Construction className="w-3.5 h-3.5" />
+              {maintenanceMutation.isPending
+                ? "Applying…"
+                : app.maintenanceEnabled
+                  ? "Update message"
+                  : "Enable maintenance"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         open={showBranchModal}

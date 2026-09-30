@@ -14,6 +14,11 @@ import { logAction } from "../lib/audit/audit";
 import { autoMapImageVolumes } from "../lib/volumes";
 import { toPublicApplication } from "../lib/sanitize";
 import {
+  enableMaintenance,
+  disableMaintenance,
+  syncMaintenance,
+} from "../services/maintenance";
+import {
   getInstallationById,
   installationCanAccessRepo,
 } from "../services/github-app";
@@ -346,6 +351,8 @@ export const applicationRouter = router({
       } catch {
         // Containers might not exist
       }
+      // Not a replica (no deploykit.service label), so removed on its own
+      await disableMaintenance(app).catch(() => {});
       await ctx.db.delete(applications).where(eq(applications.id, input.id));
       await logAction(ctx, {
         action: "application.delete",
@@ -402,7 +409,9 @@ export const applicationRouter = router({
         .returning();
       const app = await ctx.db.query.applications.findFirst({
         where: eq(applications.id, serviceId),
+        with: { domains: true },
       });
+      if (app) await syncMaintenance(app, app.domains);
       await logAction(ctx, {
         action: "application.add_domain",
         resourceType: "application",
@@ -432,6 +441,12 @@ export const applicationRouter = router({
           });
       }
       await ctx.db.delete(domains).where(eq(domains.id, input.domainId));
+      if (domain?.application?.maintenanceEnabled) {
+        const remaining = await ctx.db.query.domains.findMany({
+          where: eq(domains.applicationId, domain.application.id),
+        });
+        await syncMaintenance(domain.application, remaining);
+      }
       await logAction(ctx, {
         action: "application.remove_domain",
         resourceType: "application",
@@ -845,7 +860,7 @@ export const applicationRouter = router({
         .set({ status: "running", updatedAt: new Date() })
         .where(eq(applications.id, input.id));
       await logAction(ctx, {
-        action: "application.restart",
+        action: "application.start",
         resourceType: "application",
         resourceId: app.id,
         resourceName: app.name,
@@ -883,6 +898,71 @@ export const applicationRouter = router({
         resourceName: app.name,
       });
       return { success: true };
+    }),
+
+  setMaintenance: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        enabled: z.boolean(),
+        message: z.string().trim().max(500).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const role = await getProjectRoleByAppId(ctx.user, input.id);
+      if (!role)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Application not found",
+        });
+      if (!canOperate(role))
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Operator access required for this project",
+        });
+      const app = await ctx.db.query.applications.findFirst({
+        where: eq(applications.id, input.id),
+        with: { domains: true },
+      });
+      if (!app)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Application not found",
+        });
+
+      const maintenanceMessage = input.enabled
+        ? input.message || null
+        : app.maintenanceMessage;
+      if (input.enabled) {
+        if (app.domains.length === 0)
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "Add a domain first — maintenance mode answers on the app's domains",
+          });
+        await enableMaintenance({ ...app, maintenanceMessage }, app.domains);
+      } else {
+        await disableMaintenance(app);
+      }
+
+      const [updated] = await ctx.db
+        .update(applications)
+        .set({
+          maintenanceEnabled: input.enabled,
+          maintenanceMessage,
+          updatedAt: new Date(),
+        })
+        .where(eq(applications.id, input.id))
+        .returning();
+      await logAction(ctx, {
+        action: input.enabled
+          ? "application.maintenance_enable"
+          : "application.maintenance_disable",
+        resourceType: "application",
+        resourceId: app.id,
+        resourceName: app.name,
+      });
+      return toPublicApplication(updated!);
     }),
 
   logs: protectedProcedure
