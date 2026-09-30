@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/deploykithq/deploykit/compare/v0.4.1...v0.5.0) (2026-09-30)
+
+
+### Features
+
+* add maintenance mode for applications ([#20](https://github.com/deploykithq/deploykit/issues/20)) ([ce20b02](https://github.com/deploykithq/deploykit/commit/ce20b024ca58fe9a58611d63a6f053caa8dec492))
+
 ## [0.4.1](https://github.com/deploykithq/deploykit/compare/v0.4.0...v0.4.1) (2026-09-25)
 
 
