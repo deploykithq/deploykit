@@ -21,6 +21,8 @@ export const useApplicationDetail = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showBranchModal, setShowBranchModal] = useState(false);
   const [branchInput, setBranchInput] = useState("");
+  const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
+  const [maintenanceMessage, setMaintenanceMessage] = useState("");
 
   const { data: app, isLoading } = trpc.application.byId.useQuery(
     { id: applicationId },
@@ -53,6 +55,19 @@ export const useApplicationDetail = () => {
     },
   });
 
+  const maintenanceMutation = trpc.application.setMaintenance.useMutation({
+    onSuccess: () => {
+      utils.application.byId.invalidate({ id: applicationId });
+      setShowMaintenanceModal(false);
+    },
+  });
+
+  const openMaintenanceModal = () => {
+    maintenanceMutation.reset();
+    setMaintenanceMessage(app?.maintenanceMessage ?? "");
+    setShowMaintenanceModal(true);
+  };
+
   return {
     applicationId,
     app,
@@ -72,5 +87,11 @@ export const useApplicationDetail = () => {
     stopMutation,
     deleteMutation,
     deployBranchMutation,
+    showMaintenanceModal,
+    setShowMaintenanceModal,
+    openMaintenanceModal,
+    maintenanceMessage,
+    setMaintenanceMessage,
+    maintenanceMutation,
   };
 };

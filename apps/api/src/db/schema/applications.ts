@@ -106,6 +106,10 @@ const applications = pgTable("applications", {
   // Preview rows only: the PR comment this preview owns, so a redeploy edits
   // that comment instead of posting a second one
   previewPrCommentId: bigint("preview_pr_comment_id", { mode: "number" }),
+  // Maintenance mode: while enabled, a dk-maint-<id> container answers every
+  // domain of the app with a 503 page (services/maintenance.ts)
+  maintenanceEnabled: boolean("maintenance_enabled").default(false).notNull(),
+  maintenanceMessage: text("maintenance_message"),
   // Timestamps
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

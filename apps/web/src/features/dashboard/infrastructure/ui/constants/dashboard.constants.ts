@@ -43,6 +43,21 @@ const ACTION_CONFIG: Record<
     icon: Zap,
     color: "text-accent",
   },
+  "application.start": {
+    label: "started",
+    icon: Zap,
+    color: "text-accent",
+  },
+  "application.maintenance_enable": {
+    label: "put in maintenance",
+    icon: AlertTriangle,
+    color: "text-warning",
+  },
+  "application.maintenance_disable": {
+    label: "took out of maintenance",
+    icon: CheckCircle2,
+    color: "text-green-400",
+  },
   "application.update": {
     label: "updated app",
     icon: Box,

@@ -176,6 +176,13 @@
       "when": 1789934424000,
       "tag": "0024_add_github_app",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789934425000,
+      "tag": "0025_add_app_maintenance",
+      "breakpoints": true
     }
   ]
 }

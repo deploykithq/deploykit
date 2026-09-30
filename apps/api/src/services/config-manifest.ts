@@ -211,6 +211,9 @@ const EXCLUDED_COLUMNS = {
     "previewPrNumber",
     "previewBranch",
     "previewPrCommentId",
+    // Maintenance is live state backed by a container on this instance
+    "maintenanceEnabled",
+    "maintenanceMessage",
     // Local uuid of a GitHub App installation: meaningless on another
     // instance, which re-links by githubRepoId instead.
     "githubInstallationId",

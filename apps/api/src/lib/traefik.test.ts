@@ -18,10 +18,12 @@ describe("buildTraefikLabels", () => {
       "traefik.enable": "true",
       "traefik.http.routers.dk-blog.rule": "Host(`blog.example.com`)",
       "traefik.http.services.dk-blog.loadbalancer.server.port": "3000",
+      "traefik.http.routers.dk-blog.service": "dk-blog",
       "traefik.http.routers.dk-blog.entrypoints": "websecure",
       "traefik.http.routers.dk-blog.tls.certresolver": "letsencrypt",
       "traefik.http.routers.dk-blog-http.rule": "Host(`blog.example.com`)",
       "traefik.http.routers.dk-blog-http.entrypoints": "web",
+      "traefik.http.routers.dk-blog-http.service": "dk-blog",
       "traefik.http.routers.dk-blog-http.middlewares": "dk-blog-redirect",
       "traefik.http.middlewares.dk-blog-redirect.redirectscheme.scheme":
         "https",
@@ -71,5 +73,34 @@ describe("buildTraefikLabels", () => {
         { domain: "a.com`) || Host(`victim.com", https: false, port: 80 },
       ]),
     ).toThrow(/Unsafe characters/);
+  });
+
+  it("binds every router to its own service when there are several domains", () => {
+    const labels = buildTraefikLabels("dk-blog", [
+      { domain: "blog.example.com", https: true, port: 3000 },
+      { domain: "www.example.com", https: false, port: 3000 },
+    ]);
+    expect(labels["traefik.http.routers.dk-blog.service"]).toBe("dk-blog");
+    expect(labels["traefik.http.routers.dk-blog-http.service"]).toBe("dk-blog");
+    expect(labels["traefik.http.routers.dk-blog-1.service"]).toBe("dk-blog-1");
+  });
+
+  it("sets an explicit priority on both routers when asked", () => {
+    const labels = buildTraefikLabels(
+      "dk-maint",
+      [{ domain: "blog.example.com", https: true, port: 80 }],
+      { priority: 10000 },
+    );
+    expect(labels["traefik.http.routers.dk-maint.priority"]).toBe("10000");
+    expect(labels["traefik.http.routers.dk-maint-http.priority"]).toBe("10000");
+  });
+
+  it("leaves priority to Traefik by default", () => {
+    const labels = buildTraefikLabels("dk-blog", [
+      { domain: "blog.example.com", https: true, port: 3000 },
+    ]);
+    expect(
+      Object.keys(labels).some((k) => k.endsWith(".priority")),
+    ).toBe(false);
   });
 });
