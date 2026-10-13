@@ -11,12 +11,15 @@ import {
 } from "../trpc";
 
 import { DockerService } from "../services/docker";
+import { removeGameServer } from "../services/game-server";
+import { removeGameBackupSchedule } from "../lib/task-scheduler";
 import { toPublicProject } from "../lib/sanitize";
 
 import {
   projects,
   applications,
   databases,
+  gameServers,
   projectMembers,
 } from "../db/schema/index";
 
@@ -77,6 +80,10 @@ export const projectRouter = router({
             with: { domains: true },
           },
           databases: true,
+          gameServers: {
+            columns: { secretConfig: false, spec: false, appliedModEnv: false },
+            with: { ports: true },
+          },
         },
       });
 
@@ -251,7 +258,20 @@ export const projectRouter = router({
         }
       }
 
-      // Cascade delete project + apps + dbs + deployments + domains
+      // Remove game server containers and schedules. Like a database's, their
+      // volumes and backups stay behind.
+      const games = await ctx.db.query.gameServers.findMany({
+        where: eq(gameServers.projectId, input.id),
+      });
+
+      for (const game of games) {
+        await removeGameBackupSchedule(game.id);
+        try {
+          await removeGameServer(game, false);
+        } catch {}
+      }
+
+      // Cascade delete project + apps + dbs + game servers + deployments + domains
       await ctx.db.delete(projects).where(eq(projects.id, input.id));
 
       await logAction(ctx, {
@@ -259,7 +279,11 @@ export const projectRouter = router({
         resourceType: "project",
         resourceId: input.id,
         resourceName: project?.name,
-        metadata: { appsDeleted: apps.length, dbsDeleted: dbs.length },
+        metadata: {
+          appsDeleted: apps.length,
+          dbsDeleted: dbs.length,
+          gameServersDeleted: games.length,
+        },
       });
 
       return { success: true };

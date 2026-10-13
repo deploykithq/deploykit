@@ -1,6 +1,6 @@
 import Docker from "dockerode";
 
-import { platform } from "os";
+import { hostname, platform } from "os";
 
 const createDockerClient = (): Docker => {
   // Explicit env var takes priority
@@ -18,6 +18,7 @@ const createDockerClient = (): Docker => {
 };
 
 const docker = createDockerClient();
+
 
 const isDockerAvailable = async (): Promise<boolean> => {
   try {
@@ -55,4 +56,27 @@ const connectToNetwork = async (
   }
 };
 
-export { docker, isDockerAvailable, ensureNetwork, connectToNetwork };
+/**
+ * Connect the API's own container to `networkName`, so it can reach services
+ * that live only there (game servers' RCON). Inside a container the hostname
+ * is the container id; on a development host no container answers to it, and
+ * there is nothing to join. Returns whether the API runs in a container.
+ */
+const joinOwnContainer = async (
+  networkName: string,
+  client: Docker = docker,
+  self: string = hostname(),
+): Promise<boolean> => {
+  let info: Docker.ContainerInspectInfo;
+  try {
+    info = await client.getContainer(self).inspect();
+  } catch {
+    return false;
+  }
+  if (!info.NetworkSettings?.Networks?.[networkName]) {
+    await client.getNetwork(networkName).connect({ Container: info.Id });
+  }
+  return true;
+};
+
+export { docker, isDockerAvailable, ensureNetwork, connectToNetwork, joinOwnContainer };

@@ -6,8 +6,14 @@ import {
   type TemplateT,
 } from "@deploykit/shared";
 
-import { redis } from "../lib/redis";
-import { assertSafeUrl } from "../lib/ssrf";
+import {
+  DEFAULT_REGISTRY_URL,
+  cachedRegistryRead,
+  clearRegistryCache,
+  fetchText,
+  registryUrl,
+  type CatalogSourceT,
+} from "./registry-cache";
 
 /**
  * The template catalogue.
@@ -17,45 +23,16 @@ import { assertSafeUrl } from "../lib/ssrf";
  * picks it up within the hour without a DeployKit release. Nothing is bundled
  * into the image, so this module is the only way the catalogue reaches the UI.
  *
- * That makes the cache load-bearing rather than an optimisation. It is
- * stale-while-error: an entry stays usable for 30 days, but the registry is
- * re-read once an hour, and a failed read keeps serving the last copy that
- * validated instead of emptying the page. Only an install that has never
- * reached the registry has nothing to show.
+ * That makes the cache load-bearing rather than an optimisation; it lives in
+ * `registry-cache.ts`, shared with the game catalogue.
  *
  * Nothing here is authenticated: the registry is public data. Access control
  * happens at the router, and the *deployment* of a blueprint is what needs a
  * project role.
  */
 
-const DEFAULT_REGISTRY_URL =
-  "https://raw.githubusercontent.com/deploykithq/deploykit-templates/master";
-
-const registryUrl = (): string =>
-  (process.env.TEMPLATES_REGISTRY_URL || DEFAULT_REGISTRY_URL).replace(
-    /\/+$/,
-    "",
-  );
-
-/** How old a cached copy may be before the registry is consulted again. */
-const FRESH_FOR_MS = 60 * 60 * 1000;
-/** How long a copy stays worth serving when the registry cannot be reached. */
-const CACHE_TTL_SEC = 30 * 24 * 60 * 60;
-
-const FETCH_TIMEOUT_MS = 10_000;
-/** A blueprint is a few KB of text; anything near this is not one. */
-const MAX_RESPONSE_BYTES = 2_000_000;
-
 const INDEX_CACHE_KEY = "templates:index";
 const blueprintCacheKey = (id: string) => `templates:blueprint:${id}`;
-
-/**
- * Where the catalogue in hand came from.
- *
- * `stale` and `unavailable` both mean the registry is unreachable right now;
- * they differ in whether there is anything to show, and the UI says so.
- */
-type CatalogSourceT = "remote" | "stale" | "unavailable";
 
 /**
  * A catalogue entry as the API hands it to the web: the blueprint's metadata
@@ -72,80 +49,6 @@ interface CatalogListI {
   /** When the copy being served was fetched. Set only for `stale`. */
   cachedAt?: string;
 }
-
-interface CachedI<T> {
-  fetchedAt: number;
-  value: T;
-}
-
-/**
- * Fetch text from the registry with a timeout and a size cap.
- *
- * The URL is SSRF-checked even though only an admin can set the registry base:
- * `TEMPLATES_REGISTRY_URL` is read from the environment, so a compromised or
- * careless deployment could otherwise turn the catalogue into a probe of the
- * private network the API sits in.
- */
-const fetchText = async (url: string): Promise<string> => {
-  await assertSafeUrl(url);
-
-  const response = await fetch(url, {
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    headers: { accept: "text/plain, application/json" },
-    redirect: "follow",
-  });
-
-  if (!response.ok) {
-    throw new Error(`Registry responded ${response.status} for ${url}`);
-  }
-
-  const declared = Number(response.headers.get("content-length") ?? 0);
-  if (declared > MAX_RESPONSE_BYTES) {
-    throw new Error(`Registry response too large (${declared} bytes)`);
-  }
-
-  const body = await response.text();
-  if (body.length > MAX_RESPONSE_BYTES) {
-    throw new Error("Registry response too large");
-  }
-  return body;
-};
-
-/**
- * Read a cache entry, dropping it if it no longer parses against the current
- * schema — a DeployKit upgrade can tighten one, and a poisoned entry would
- * otherwise keep failing until its 30 days ran out.
- */
-const readCache = async <T>(
-  key: string,
-  parse: (raw: unknown) => T,
-): Promise<CachedI<T> | null> => {
-  const raw = await redis.get(key).catch(() => null);
-  if (!raw) return null;
-
-  try {
-    const entry = JSON.parse(raw) as { fetchedAt?: number; value?: unknown };
-    if (typeof entry?.fetchedAt !== "number") throw new Error("no fetchedAt");
-    return { fetchedAt: entry.fetchedAt, value: parse(entry.value) };
-  } catch {
-    await redis.del(key).catch(() => {});
-    return null;
-  }
-};
-
-const writeCache = async <T>(key: string, value: T): Promise<void> => {
-  await redis
-    .set(
-      key,
-      JSON.stringify({ fetchedAt: Date.now(), value }),
-      "EX",
-      CACHE_TTL_SEC,
-    )
-    .catch(() => {});
-};
-
-const isFresh = (entry: CachedI<unknown>): boolean =>
-  Date.now() - entry.fetchedAt < FRESH_FOR_MS;
 
 /** Absolute URL of a blueprint's logo in the registry. */
 const withLogoUrls = (templates: TemplateMetaT[]): CatalogEntryT[] => {
@@ -164,39 +67,31 @@ const withLogoUrls = (templates: TemplateMetaT[]): CatalogEntryT[] => {
  * than one that renders an error boundary.
  */
 const listTemplates = async (): Promise<CatalogListI> => {
-  const cached = await readCache(INDEX_CACHE_KEY, (v) =>
-    templateIndexSchema.parse(v),
-  );
+  const read = await cachedRegistryRead({
+    key: INDEX_CACHE_KEY,
+    parse: (v) => templateIndexSchema.parse(v),
+    load: async () =>
+      templateIndexSchema.parse(
+        JSON.parse(await fetchText(`${registryUrl()}/index.json`)),
+      ),
+  });
 
-  if (cached && isFresh(cached)) {
-    return { templates: withLogoUrls(cached.value), source: "remote" };
-  }
-
-  try {
-    const body = await fetchText(`${registryUrl()}/index.json`);
-    const templates = templateIndexSchema.parse(JSON.parse(body));
-    await writeCache(INDEX_CACHE_KEY, templates);
-    return { templates: withLogoUrls(templates), source: "remote" };
-  } catch (err: any) {
-    const message = err?.message ?? String(err);
-
-    if (cached) {
-      console.warn(
-        `[templates] Registry unreachable (${message}); serving the cached catalogue from ${new Date(cached.fetchedAt).toISOString()}`,
-      );
-      return {
-        templates: withLogoUrls(cached.value),
-        source: "stale",
-        error: message,
-        cachedAt: new Date(cached.fetchedAt).toISOString(),
-      };
-    }
-
+  if (read.source === "stale") {
     console.warn(
-      `[templates] Registry unreachable (${message}) and nothing is cached; the catalogue is empty`,
+      `[templates] Registry unreachable (${read.error}); serving the cached catalogue from ${read.cachedAt}`,
     );
-    return { templates: [], source: "unavailable", error: message };
+  } else if (read.source === "unavailable") {
+    console.warn(
+      `[templates] Registry unreachable (${read.error}) and nothing is cached; the catalogue is empty`,
+    );
   }
+
+  return {
+    templates: withLogoUrls(read.value ?? []),
+    source: read.source,
+    ...(read.error ? { error: read.error } : {}),
+    ...(read.cachedAt ? { cachedAt: read.cachedAt } : {}),
+  };
 };
 
 /**
@@ -206,54 +101,44 @@ const listTemplates = async (): Promise<CatalogListI> => {
  *          cached copy is left.
  */
 const getTemplate = async (id: string): Promise<TemplateT | null> => {
-  const key = blueprintCacheKey(id);
-  const cached = await readCache(key, (v) => templateSchema.parse(v));
+  const read = await cachedRegistryRead({
+    key: blueprintCacheKey(id),
+    parse: (v) => templateSchema.parse(v),
+    load: async () => {
+      const base = `${registryUrl()}/blueprints/${encodeURIComponent(id)}`;
+      const [specBody, compose] = await Promise.all([
+        fetchText(`${base}/template.json`),
+        fetchText(`${base}/docker-compose.yml`),
+      ]);
 
-  if (cached && isFresh(cached)) return cached.value;
+      const template: TemplateT = {
+        spec: templateSpecSchema.parse(JSON.parse(specBody)),
+        compose,
+      };
+      if (template.spec.id !== id) {
+        // Deploying something whose id differs from the one that was asked
+        // for is a supply-chain problem, not a typo.
+        throw new Error(
+          `Blueprint at /blueprints/${id} declares id "${template.spec.id}"`,
+        );
+      }
+      return template;
+    },
+  });
 
-  try {
-    const base = `${registryUrl()}/blueprints/${encodeURIComponent(id)}`;
-    const [specBody, compose] = await Promise.all([
-      fetchText(`${base}/template.json`),
-      fetchText(`${base}/docker-compose.yml`),
-    ]);
-
-    const template: TemplateT = {
-      spec: templateSpecSchema.parse(JSON.parse(specBody)),
-      compose,
-    };
-    if (template.spec.id !== id) {
-      // Deploying something whose id differs from the one that was asked for
-      // is a supply-chain problem, not a typo.
-      throw new Error(
-        `Blueprint at /blueprints/${id} declares id "${template.spec.id}"`,
-      );
-    }
-
-    await writeCache(key, template);
-    return template;
-  } catch (err: any) {
-    const message = err?.message ?? String(err);
-
-    if (cached) {
-      console.warn(
-        `[templates] Could not refresh "${id}" (${message}); using the cached copy`,
-      );
-      return cached.value;
-    }
-
-    console.warn(`[templates] Cannot serve "${id}": ${message}`);
-    return null;
+  if (read.source === "stale") {
+    console.warn(
+      `[templates] Could not refresh "${id}" (${read.error}); using the cached copy`,
+    );
+  } else if (read.source === "unavailable") {
+    console.warn(`[templates] Cannot serve "${id}": ${read.error}`);
   }
+  return read.value;
 };
 
 /** Drop every cached catalogue entry so the next read re-fetches. */
-const refreshCatalog = async (): Promise<{ cleared: number }> => {
-  const keys = await redis.keys("templates:*");
-  if (keys.length === 0) return { cleared: 0 };
-  await redis.del(...keys);
-  return { cleared: keys.length };
-};
+const refreshCatalog = (): Promise<{ cleared: number }> =>
+  clearRegistryCache("templates:");
 
 /**
  * Validate a blueprint supplied by the user (pasted, or fetched from a URL they

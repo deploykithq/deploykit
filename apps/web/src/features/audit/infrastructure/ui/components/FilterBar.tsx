@@ -30,9 +30,9 @@ export const FilterBar: React.FC<FilterBarPropsI> = memo(function FilterBar({
         onChange={(e) => onChange({ ...filters, resourceType: e.target.value })}
       >
         <option value="">All resources</option>
-        {["application", "database", "project", "server", "user"].map((r) => (
+        {["application", "database", "game_server", "project", "server", "settings", "user"].map((r) => (
           <option key={r} value={r}>
-            {r.charAt(0).toUpperCase() + r.slice(1)}
+            {(r.charAt(0).toUpperCase() + r.slice(1)).replace("_", " ")}
           </option>
         ))}
       </select>
@@ -43,10 +43,10 @@ export const FilterBar: React.FC<FilterBarPropsI> = memo(function FilterBar({
         onChange={(e) => onChange({ ...filters, action: e.target.value })}
       >
         <option value="">All actions</option>
-        {["auth", "project", "application", "database", "server", "user"].map(
+        {["auth", "project", "application", "database", "game_server", "server", "settings", "user"].map(
           (a) => (
             <option key={a} value={a}>
-              {a.charAt(0).toUpperCase() + a.slice(1)}
+              {(a.charAt(0).toUpperCase() + a.slice(1)).replace("_", " ")}
             </option>
           ),
         )}

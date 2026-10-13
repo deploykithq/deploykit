@@ -25,7 +25,8 @@
       "@templates/*": ["./src/features/templates/*"],
       "@status/*": ["./src/features/status/*"],
       "@task/*": ["./src/features/task/*"],
-      "@github/*": ["./src/features/github/*"]
+      "@github/*": ["./src/features/github/*"],
+      "@game-server/*": ["./src/features/game-server/*"]
     }
   },
   "include": ["src/**/*"]

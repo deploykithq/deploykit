@@ -75,7 +75,30 @@ type AuditActionT =
   // Project members
   | "project_member.add"
   | "project_member.update"
-  | "project_member.remove";
+  | "project_member.remove"
+  // Game servers
+  | "game_server.create"
+  | "game_server.update"
+  | "game_server.start"
+  | "game_server.stop"
+  | "game_server.restart"
+  | "game_server.delete"
+  | "game_server.console_command"
+  | "game_server.file_write"
+  | "game_server.file_upload"
+  | "game_server.file_delete"
+  | "game_server.file_rename"
+  | "game_server.file_mkdir"
+  | "game_server.backup"
+  | "game_server.restore"
+  | "game_server.delete_backup"
+  | "game_server.update_backup_config"
+  | "game_server.mod_add"
+  | "game_server.mod_update"
+  | "game_server.mod_remove"
+  | "game_server.modpack_set"
+  | "game_server.mods_apply"
+  | "settings.update";
 
 type ResourceTypeT =
   | "project"
@@ -87,6 +110,8 @@ type ResourceTypeT =
   | "user"
   | "notification_channel"
   | "task"
-  | "github_app";
+  | "github_app"
+  | "game_server"
+  | "settings";
 
 export type { AuditActionT, ResourceTypeT };

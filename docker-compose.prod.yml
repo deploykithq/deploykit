@@ -1,4 +1,18 @@
 services:
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    container_name: deploykit-socket-proxy
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      POST: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - deploykit-socket
+
   # Traefik (Reverse Proxy + SSL)
   traefik:
     image: traefik:v3.6
@@ -7,6 +21,7 @@ services:
     command:
       - --api.dashboard=false
       - --providers.docker=true
+      - --providers.docker.endpoint=tcp://docker-socket-proxy:2375
       - --providers.docker.exposedbydefault=false
       - --providers.docker.network=deploykit-network
       - --entrypoints.web.address=:80
@@ -21,11 +36,15 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    depends_on:
+      - docker-socket-proxy
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - letsencrypt:/letsencrypt
+    security_opt:
+      - no-new-privileges:true
     networks:
       - deploykit-network
+      - deploykit-socket
   postgres:
     image: postgres:16-alpine
     container_name: deploykit-postgres
@@ -36,6 +55,8 @@ services:
       POSTGRES_DB: ${DB_NAME:-deploykit}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    security_opt:
+      - no-new-privileges:true
     networks:
       - deploykit-network
     healthcheck:
@@ -47,9 +68,13 @@ services:
     image: redis:7-alpine
     container_name: deploykit-redis
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction
+    command: redis-server --requirepass ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env (openssl rand -hex 32)} --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
     volumes:
       - redis-data:/data
+    security_opt:
+      - no-new-privileges:true
     networks:
       - deploykit-network
     healthcheck:
@@ -73,32 +98,23 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://${DB_USER:-deploykit}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-deploykit}
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       JWT_SECRET: ${JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET}
-      # The instance's own public URL. Traefik serves the panel and the API on
-      # the same host, so it is derived from DOMAIN rather than kept in step by
-      # hand. Used for CORS, Socket.IO origins, the links DeployKit puts on a
-      # commit status, and the webhook/redirect URLs frozen into a GitHub App.
       WEB_URL: https://${DOMAIN}
       API_PORT: 4000
       COMPOSE_ROOT: /var/lib/deploykit/compose
-      # Optional: where one-click templates get their hostnames.
-      # A wildcard domain pointing here (real certificates), or the host's
-      # public IP (sslip.io hostnames, plain HTTP).
       TEMPLATES_BASE_DOMAIN: ${TEMPLATES_BASE_DOMAIN:-}
       PUBLIC_IP: ${PUBLIC_IP:-}
       TEMPLATES_REGISTRY_URL: ${TEMPLATES_REGISTRY_URL:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/backups/deploykit:/var/backups/deploykit
-      # SAME PATH ON BOTH SIDES — not a typo. Compose resolves a stack's
-      # relative binds against this directory and sends absolute paths to the
-      # host's daemon, so the path the API writes must be the path the daemon
-      # reads. Change one side and mounted config files arrive empty.
       - /var/lib/deploykit/compose:/var/lib/deploykit/compose
+    security_opt:
+      - no-new-privileges:true
     networks:
       - deploykit-network
     labels:
@@ -120,6 +136,8 @@ services:
     restart: unless-stopped
     depends_on:
       - api
+    security_opt:
+      - no-new-privileges:true
     networks:
       - deploykit-network
     labels:
@@ -138,3 +156,5 @@ volumes:
 networks:
   deploykit-network:
     external: true
+  deploykit-socket:
+    internal: true

@@ -4,6 +4,7 @@ import {
   applications,
   databases,
   composeServices,
+  gameServers,
   metricSamples,
 } from "../db/schema/index";
 import {
@@ -175,7 +176,7 @@ async function compactAndPrune(): Promise<void> {
 
 async function tick(): Promise<void> {
   try {
-    const [apps, dbs, stacks] = await Promise.all([
+    const [apps, dbs, stacks, games] = await Promise.all([
       db.query.applications.findMany({
         where: eq(applications.status, "running"),
         columns: { id: true },
@@ -188,6 +189,10 @@ async function tick(): Promise<void> {
         where: eq(composeServices.status, "running"),
         columns: { id: true },
       }),
+      db.query.gameServers.findMany({
+        where: eq(gameServers.status, "running"),
+        columns: { id: true },
+      }),
     ]);
 
     const tasks: Promise<void>[] = [
@@ -196,6 +201,7 @@ async function tick(): Promise<void> {
       // Without this a stack's samples pile up in Redis and its long-term
       // history stays empty — the buffer is only ever drained here.
       ...stacks.map((s) => rollupService(s.id, "compose")),
+      ...games.map((g) => rollupService(g.id, "game_server")),
     ];
     await Promise.allSettled(tasks);
 

@@ -6,6 +6,7 @@ import {
   applications,
   databases,
   composeServices,
+  gameServers,
 } from "../db/schema/index";
 
 import type { UserT } from "../db/schema/index";
@@ -79,6 +80,22 @@ const getProjectRoleByDbId = async (
   return getProjectRole(user, database.projectId);
 };
 
+// Resolve role from a game server ID (looks up the server's projectId first).
+const getProjectRoleByGameServerId = async (
+  user: UserT,
+  gameServerId: string,
+): Promise<UserRole | null> => {
+  if (user.role === "admin") return "admin";
+
+  const server = await db.query.gameServers.findFirst({
+    where: eq(gameServers.id, gameServerId),
+    columns: { projectId: true },
+  });
+
+  if (!server) return null;
+  return getProjectRole(user, server.projectId);
+};
+
 // Resolve role from a Compose stack ID (looks up the stack's projectId first).
 const getProjectRoleByComposeId = async (
   user: UserT,
@@ -127,6 +144,7 @@ export {
   getProjectRoleByAppId,
   getProjectRoleByDbId,
   getProjectRoleByComposeId,
+  getProjectRoleByGameServerId,
   getAccessibleProjectIds,
   canView,
   canOperate,

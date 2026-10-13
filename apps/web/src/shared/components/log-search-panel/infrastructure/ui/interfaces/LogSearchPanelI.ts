@@ -1,4 +1,4 @@
-type LogServiceTypeT = "application" | "database" | "compose";
+type LogServiceTypeT = "application" | "database" | "compose" | "game_server";
 
 type LogLevelT = "error" | "warn" | "info" | "debug" | "fatal";
 

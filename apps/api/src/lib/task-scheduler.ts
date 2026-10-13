@@ -2,11 +2,11 @@ import { eq, and, isNotNull } from "drizzle-orm";
 import type { Queue } from "bullmq";
 
 import { db } from "../db/index";
-import { scheduledTasks, databases } from "../db/schema/index";
-import { taskQueue, backupQueue } from "./redis";
+import { scheduledTasks, databases, gameServers } from "../db/schema/index";
+import { taskQueue, backupQueue, gameBackupQueue } from "./redis";
 import { assertValidCron } from "./cron";
 
-import type { ScheduledTaskT, DatabaseT } from "../db/schema/index";
+import type { ScheduledTaskT, DatabaseT, GameServerT } from "../db/schema/index";
 
 /**
  * Every cron in DeployKit, in one place.
@@ -15,8 +15,9 @@ import type { ScheduledTaskT, DatabaseT } from "../db/schema/index";
  * parses the pattern itself, honours a timezone, and deduplicates across API
  * processes — none of which the hand-written matcher could do.
  *
- * Schedulers are keyed `task:<taskId>` / `backup:<databaseId>`, so the two
- * namespaces can be reconciled independently against their own queue.
+ * Schedulers are keyed `task:<taskId>` / `backup:<databaseId>` /
+ * `gamebackup:<gameServerId>`, so each namespace can be reconciled
+ * independently against its own queue.
  */
 
 interface WantedScheduleI {
@@ -35,6 +36,8 @@ interface ScheduleDiffI {
 const taskSchedulerId = (taskId: string): string => `task:${taskId}`;
 const backupSchedulerId = (databaseId: string): string =>
   `backup:${databaseId}`;
+const gameBackupSchedulerId = (gameServerId: string): string =>
+  `gamebackup:${gameServerId}`;
 
 /**
  * What to change so Redis matches the DB. Pure, so the reconcile logic is
@@ -50,7 +53,7 @@ const backupSchedulerId = (databaseId: string): string =>
 const diffSchedules = (
   wanted: WantedScheduleI[],
   existing: string[],
-  namespace: "task" | "backup",
+  namespace: "task" | "backup" | "gamebackup",
 ): ScheduleDiffI => {
   const wantedIds = new Set(wanted.map((w) => w.id));
   const prefix = `${namespace}:`;
@@ -122,6 +125,29 @@ const upsertBackupSchedule = async (database: DatabaseT): Promise<void> => {
 const removeBackupSchedule = async (databaseId: string): Promise<void> => {
   await backupQueue
     .removeJobScheduler(backupSchedulerId(databaseId))
+    .catch(() => {});
+};
+
+/** Same for a game server's world backup. No timezone, like database backups. */
+const upsertGameBackupSchedule = async (
+  server: Pick<GameServerT, "id" | "backupEnabled" | "backupCron">,
+): Promise<void> => {
+  if (!server.backupEnabled || !server.backupCron) {
+    await removeGameBackupSchedule(server.id);
+    return;
+  }
+  assertValidCron(server.backupCron, "UTC");
+  await upsert(
+    gameBackupQueue,
+    "backup",
+    { id: gameBackupSchedulerId(server.id), pattern: server.backupCron },
+    { gameServerId: server.id, trigger: "schedule" },
+  );
+};
+
+const removeGameBackupSchedule = async (gameServerId: string): Promise<void> => {
+  await gameBackupQueue
+    .removeJobScheduler(gameBackupSchedulerId(gameServerId))
     .catch(() => {});
 };
 
@@ -197,9 +223,49 @@ const reconcileSchedules = async (): Promise<void> => {
     await backupQueue.removeJobScheduler(id).catch(() => {});
   }
 
+  // Game server backups
+  const games = await db.query.gameServers.findMany({
+    where: eq(gameServers.backupEnabled, true),
+    columns: { id: true, backupCron: true },
+  });
+  const wantedGameBackups: WantedScheduleI[] = [];
+  for (const game of games) {
+    if (!game.backupCron) continue;
+    try {
+      assertValidCron(game.backupCron, "UTC");
+      wantedGameBackups.push({
+        id: gameBackupSchedulerId(game.id),
+        pattern: game.backupCron,
+      });
+    } catch (err: any) {
+      console.error(
+        `[scheduler] Game server ${game.id} has an invalid backup cron and was not scheduled: ${err.message}`,
+      );
+    }
+  }
+
+  const existingGameBackups = (
+    await gameBackupQueue.getJobSchedulers(0, -1)
+  ).map((s) => s.key);
+  const gameDiff = diffSchedules(
+    wantedGameBackups,
+    existingGameBackups,
+    "gamebackup",
+  );
+  for (const s of gameDiff.toUpsert) {
+    await upsert(gameBackupQueue, "backup", s, {
+      gameServerId: s.id.slice("gamebackup:".length),
+      trigger: "schedule",
+    });
+  }
+  for (const id of gameDiff.toRemove) {
+    await gameBackupQueue.removeJobScheduler(id).catch(() => {});
+  }
+
   console.log(
-    `[scheduler] Reconciled ${wantedTasks.length} task schedule(s) and ` +
-      `${wantedBackups.length} backup schedule(s)`,
+    `[scheduler] Reconciled ${wantedTasks.length} task schedule(s), ` +
+      `${wantedBackups.length} backup schedule(s) and ` +
+      `${wantedGameBackups.length} game backup schedule(s)`,
   );
 };
 
@@ -211,6 +277,9 @@ export {
   removeTaskSchedule,
   upsertBackupSchedule,
   removeBackupSchedule,
+  gameBackupSchedulerId,
+  upsertGameBackupSchedule,
+  removeGameBackupSchedule,
   reconcileSchedules,
   type WantedScheduleI,
   type ScheduleDiffI,

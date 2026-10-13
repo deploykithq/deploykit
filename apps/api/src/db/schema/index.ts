@@ -19,3 +19,5 @@ export * from "./compose-services";
 export * from "./compose-domains";
 export * from "./scheduled-tasks";
 export * from "./task-runs";
+export * from "./game-servers";
+export * from "./instance-settings";

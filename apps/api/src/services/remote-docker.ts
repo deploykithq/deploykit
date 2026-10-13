@@ -93,7 +93,7 @@ export class RemoteDockerService {
     name: string;
     image: string;
     env?: string[];
-    ports?: Array<{ host: number; container: number }>;
+    ports?: Array<{ host: number; container: number; protocol?: "tcp" | "udp" }>;
     volumes?: string[];
     networkName?: string;
     labels?: Record<string, string>;
@@ -104,6 +104,15 @@ export class RemoteDockerService {
     skipPull?: boolean;
     cpuMillicores?: number;
     memoryMb?: number;
+    openStdin?: boolean;
+    stopSignal?: string;
+    stopTimeout?: number;
+    securityOpt?: string[];
+    capDrop?: string[];
+    pidsLimit?: number;
+    // Accepted for interface parity: `docker run --network` already attaches
+    // to that network alone.
+    exclusiveNetwork?: boolean;
   }): Promise<string> {
     // Ensure network exists
     if (opts.networkName) {
@@ -137,6 +146,15 @@ export class RemoteDockerService {
       args.push("--memory-swap", `${opts.memoryMb}m`);
     }
 
+    if (opts.openStdin) args.push("-i");
+    if (opts.stopSignal) args.push("--stop-signal", shellEscape(opts.stopSignal));
+    if (opts.stopTimeout) {
+      args.push("--stop-timeout", String(Number(opts.stopTimeout)));
+    }
+    for (const opt of opts.securityOpt ?? []) args.push("--security-opt", shellEscape(opt));
+    for (const cap of opts.capDrop ?? []) args.push("--cap-drop", shellEscape(cap));
+    if (opts.pidsLimit) args.push("--pids-limit", String(Number(opts.pidsLimit)));
+
     // Network
     if (opts.networkName) {
       args.push("--network", shellEscape(opts.networkName));
@@ -152,7 +170,8 @@ export class RemoteDockerService {
     // Ports
     if (opts.ports) {
       for (const p of opts.ports) {
-        args.push("-p", `${Number(p.host)}:${Number(p.container)}`);
+        const proto = p.protocol === "udp" ? "/udp" : "";
+        args.push("-p", `${Number(p.host)}:${Number(p.container)}${proto}`);
       }
     }
 

@@ -103,7 +103,7 @@ catalogue holding `docker-compose.yml` + `template.json` (+ an optional logo):
   `packages/shared`. The catalogue repo validates contributions against a JSON
   Schema derived from it; re-emit it there after changing the Zod schema:
   ```
-  pnpm --filter @deploykit/shared schema:emit -- --out ../deploykit-templates/schema/template.schema.json
+  pnpm --filter @deploykit/shared schema:emit -- --out ../../../deploykit-templates/schema/template.schema.json
   ```
 
 `services/compose.ts` injects, at deploy time only, the `deploykit.*` ownership labels
@@ -121,6 +121,72 @@ mounted config files silently arrive as empty directories.
 Deployments are shared: `deployments.application_id` is nullable and
 `deployments.compose_service_id` is its counterpart, with a CHECK that exactly one is
 set. Any code reading `application_id` must handle a stack deployment.
+
+### Game servers
+
+A **game server** (`game_servers`) is a third kind of service: one container built
+from a game definition, `games/<id>/game.json` in the same template registry
+(`services/game-catalog.ts`, sharing the stale-while-error cache in
+`services/registry-cache.ts`). The contract is `gameSpecSchema` in
+`packages/shared/src/games`; re-emit its JSON Schema with
+`schema:emit -- --schema game --out ../../../deploykit-templates/schema/game.schema.json`.
+Unlike a blueprint, its `variables` are form fields the user fills in;
+`validateGameValues` is shared by the form and the API. The definition is
+snapshotted into the row (`spec`) at creation, so registry edits never change a
+running server. v1 runs on the **local daemon only**.
+
+- **Names.** Everything is `dk-gs-<name>`; helpers are `dk-gs-<name>_<purpose>`
+  (`_` cannot occur in a game server name). Application names are free-form, so
+  `dk-gs-x` can still belong to an app called `gs-x`: never remove, exec into or
+  recreate a container by name without checking its `deploykit.service` /
+  `deploykit.owner` label (`assertNameIsOurs`, `ensureHelper`).
+- **Isolation.** Game containers run on their own network,
+  `deploykit-games` (`lib/game-isolation.ts`), never on `deploykit-network`:
+  mods and plugins are third-party code, and the shared network holds Redis
+  (job queues the API runs with the Docker socket) and Postgres. The API joins
+  `deploykit-games` itself at boot (`joinOwnContainer`) to reach RCON. Game
+  containers and their volume helpers also get `GAME_HARDENING`
+  (no-new-privileges, dropped NET_RAW/MKNOD/…, a pids limit) — check a new
+  game's image still boots under it.
+- **Ports.** Clients connect straight to host ports, often UDP, so
+  `game_server_ports` records every allocation under a unique
+  `(server_key, host_port, protocol)` index; `services/game-ports.ts` also
+  checks the daemon's published ports. `createAndStart` takes `protocol`.
+- **Console.** Output is the ordinary log stream. Input is `consoleSend`: stdin
+  via a hijacked `docker attach` (the container has `OpenStdin` and **no TTY**,
+  which would break every log demuxer), or RCON (`services/rcon.ts`) to the
+  container's address on `deploykit-games`, never a published port.
+- **Files and backups** run in throwaway alpine helpers that mount the volumes
+  under `/mnt/<volume>` — never touch a volume from the API container. They keep
+  the one-off invariants (no `deploykit.service` label, no ports, no network,
+  restart `no`). Uploads/downloads are streamed Fastify routes in
+  `routes/game-files.ts`, not tRPC. Backups are `/var/backups/deploykit/@games/<id>`,
+  run on the `game-backup` queue (concurrency 1, so a safety backup always
+  precedes its restore) and are scheduled as `gamebackup:<id>`.
+- **Authorization.** Console commands and file writes/uploads are
+  `operatorProcedure` **and** project `canOperate` (a plugin jar is code);
+  reading files and downloads need `canViewSecrets`; `secret_config` is never
+  returned. A third console method, `exec`, runs the image's own injector
+  (tModLoader's `inject`) with the command as one argv element — never a shell.
+- **Mods.** A game's optional `mods` block names its sources (Modrinth,
+  CurseForge, Steam Workshop) and the env vars its image reads them from.
+  DeployKit keeps the list (`game_server_mods`, versions pinned) and the
+  modpack (`game_servers.modpack`); `services/game-mods-env.ts` renders them,
+  and provisioning merges that env **after** the game's own, so a modpack's
+  `TYPE` wins. The image does the downloading — never fetch a mod into a
+  volume from the API. Every source var is always emitted, even empty: that
+  is how the image removes the last mod. `applied_mod_env` (API keys
+  stripped) is what was last provisioned; a difference is "changes pending".
+  Applying runs on the `game-backup` queue as `apply-mods`, after a safety
+  backup that is forced when it removes mods or swaps the modpack
+  (`isDestructiveChange`). Mutating mods is `operatorProcedure` **and**
+  project `canOperate`. `apply` is a reserved tRPC name, hence
+  `mods.applyChanges`.
+- **Catalogue calls** go through `services/mod-sources/` to fixed hosts only;
+  a pasted link is parsed for an id, never fetched. The CurseForge and Steam
+  keys live encrypted in `instance_settings` (Settings → Game mods, admin
+  only), are validated against the provider before saving, and are never
+  returned — only "configured" and the last four characters.
 
 ### Scheduled tasks & one-off commands
 
@@ -249,7 +315,8 @@ only place that decides, and `deploy.worker.ts` just asks it.
 Requires: `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `ENCRYPTION_KEY`.
 Compose stacks add `COMPOSE_ROOT` (see the same-path rule above) and, optionally,
 `TEMPLATES_BASE_DOMAIN` / `PUBLIC_IP` (where a template's generated hostname comes from)
-and `TEMPLATES_REGISTRY_URL`. See `.env` for dev defaults, `.env.production` for the
+and `TEMPLATES_REGISTRY_URL`. Game servers optionally read `GAME_PORT_RANGE` and
+`GAME_UPLOAD_MAX_BYTES`. See `.env` for dev defaults, `.env.production` for the
 production template.
 
 ### Database migrations

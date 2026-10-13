@@ -16,6 +16,8 @@ import { templateRouter } from "./template";
 import { databaseRouter } from "./database";
 import { dashboardRouter } from "./dashboard";
 import { applicationRouter } from "./application";
+import { gameServerRouter } from "./game-server";
+import { settingsRouter } from "./settings";
 import { notificationRouter } from "./notification";
 import { projectMemberRouter } from "./project-member";
 
@@ -24,6 +26,8 @@ export const appRouter = router({
   project: projectRouter,
   application: applicationRouter,
   database: databaseRouter,
+  gameServer: gameServerRouter,
+  settings: settingsRouter,
   server: serverRouter,
   sshKey: sshKeyRouter,
   github: githubRouter,

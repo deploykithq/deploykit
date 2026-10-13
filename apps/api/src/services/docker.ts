@@ -9,7 +9,7 @@ interface CreateContainerOptsI {
   name: string;
   image: string;
   env?: string[];
-  ports?: Array<{ host: number; container: number }>;
+  ports?: Array<{ host: number; container: number; protocol?: "tcp" | "udp" }>;
   volumes?: string[];
   networkName?: string;
   labels?: Record<string, string>;
@@ -18,6 +18,17 @@ interface CreateContainerOptsI {
   skipPull?: boolean; // Skip pull for locally built images
   cpuMillicores?: number; // CPU cap in millicores (1000 = 1 core)
   memoryMb?: number; // Memory cap in MB
+  // Keep stdin open (without a TTY) so a process console can be written to
+  // through `docker attach`. A TTY would turn the log stream into raw output,
+  // which every log reader here demultiplexes as framed stdout/stderr.
+  openStdin?: boolean;
+  stopSignal?: string;
+  stopTimeout?: number; // seconds `docker stop` waits before SIGKILL
+  securityOpt?: string[]; // e.g. no-new-privileges:true
+  capDrop?: string[];
+  pidsLimit?: number;
+  // Attach to networkName only, instead of Docker's default bridge plus it.
+  exclusiveNetwork?: boolean;
 }
 
 export interface ServiceContainerI {
@@ -97,7 +108,7 @@ export class DockerService {
 
     if (opts.ports) {
       for (const p of opts.ports) {
-        const key = `${p.container}/tcp`;
+        const key = `${p.container}/${p.protocol ?? "tcp"}`;
         exposedPorts[key] = {};
         portBindings[key] = [{ HostPort: String(p.host) }];
       }
@@ -114,10 +125,19 @@ export class DockerService {
       ExposedPorts: exposedPorts,
       Labels: opts.labels || {},
       Cmd: opts.command,
+      ...(opts.openStdin
+        ? { OpenStdin: true, AttachStdin: true, StdinOnce: false, Tty: false }
+        : {}),
+      ...(opts.stopSignal ? { StopSignal: opts.stopSignal } : {}),
+      ...(opts.stopTimeout ? { StopTimeout: opts.stopTimeout } : {}),
       HostConfig: {
         PortBindings: portBindings,
         Binds: binds,
         RestartPolicy: { Name: opts.restartPolicy || "unless-stopped" },
+        ...(opts.exclusiveNetwork && opts.networkName ? { NetworkMode: opts.networkName } : {}),
+        ...(opts.securityOpt ? { SecurityOpt: opts.securityOpt } : {}),
+        ...(opts.capDrop ? { CapDrop: opts.capDrop } : {}),
+        ...(opts.pidsLimit ? { PidsLimit: opts.pidsLimit } : {}),
         ...(opts.cpuMillicores
           ? { NanoCpus: opts.cpuMillicores * 1_000_000 }
           : {}),
@@ -132,8 +152,8 @@ export class DockerService {
       },
     });
 
-    // Connect to network before starting
-    if (opts.networkName) {
+    // Connect to network before starting (already attached when exclusive)
+    if (opts.networkName && !opts.exclusiveNetwork) {
       await connectToNetwork(container.id, opts.networkName);
     }
 
