@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/deploykithq/deploykit/compare/v0.5.0...v0.6.0) (2026-10-13)
+
+
+### Features
+
+* added support to deploy game servers ([#23](https://github.com/deploykithq/deploykit/issues/23)) ([3f92806](https://github.com/deploykithq/deploykit/commit/3f928068fc91c6c1eafd6dba2d4aedccdfcebd2b))
+
 ## [0.5.0](https://github.com/deploykithq/deploykit/compare/v0.4.1...v0.5.0) (2026-09-30)
 
 
