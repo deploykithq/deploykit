@@ -177,6 +177,10 @@ cp .env.production .env
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
+> **Upgrading an existing install:** Redis now requires a password. Add
+> `REDIS_PASSWORD=$(openssl rand -hex 32)` to `.env` before `up` — Compose
+> refuses to start without it.
+
 ---
 
 ## Tech Stack
@@ -202,6 +206,7 @@ docker compose -f docker-compose.prod.yml up -d --build
 |----------|-------------|---------|
 | `DATABASE_URL` | PostgreSQL connection string | — |
 | `REDIS_URL` | Redis connection string | — |
+| `REDIS_PASSWORD` | Production only (`docker-compose.prod.yml`): Redis password, required. Hex only (`openssl rand -hex 32`) | — |
 | `JWT_SECRET` | Secret for signing access tokens | — |
 | `JWT_REFRESH_SECRET` | Secret for signing refresh tokens | — |
 | `ENCRYPTION_KEY` | 64-char hex key for AES-256-GCM (`openssl rand -hex 32`) | — |

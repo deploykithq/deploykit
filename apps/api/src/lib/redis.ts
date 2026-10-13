@@ -52,6 +52,22 @@ const backupQueue = new Queue("backup", {
   },
 });
 
+/**
+ * World backups and restores of game servers. One queue for both, with
+ * concurrency 1 in the worker, so a restore never overlaps a backup of the
+ * same world — and a "safety backup, then restore" pair runs in order. No
+ * retries: a backup that failed half-way is recorded as failed, and a restore
+ * must never be replayed behind the user's back.
+ */
+const gameBackupQueue = new Queue("game-backup", {
+  connection: redis,
+  defaultJobOptions: {
+    removeOnComplete: { count: 100 },
+    removeOnFail: { count: 50 },
+    attempts: 1,
+  },
+});
+
 const refreshTokenStore = {
   async set(token: string, userId: string): Promise<void> {
     await redis.set(`${RT_PREFIX}${token}`, userId, "EX", RT_TTL_SEC);
@@ -95,6 +111,7 @@ export {
   deployQueue,
   composeDeployQueue,
   backupQueue,
+  gameBackupQueue,
   taskQueue,
   isRateLimited,
 };

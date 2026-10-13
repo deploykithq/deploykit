@@ -32,7 +32,7 @@ export interface DockerServiceI {
     name: string;
     image: string;
     env?: string[];
-    ports?: Array<{ host: number; container: number }>;
+    ports?: Array<{ host: number; container: number; protocol?: "tcp" | "udp" }>;
     volumes?: string[];
     networkName?: string;
     labels?: Record<string, string>;
@@ -41,6 +41,13 @@ export interface DockerServiceI {
     skipPull?: boolean;
     cpuMillicores?: number;
     memoryMb?: number;
+    openStdin?: boolean;
+    stopSignal?: string;
+    stopTimeout?: number;
+    securityOpt?: string[];
+    capDrop?: string[];
+    pidsLimit?: number;
+    exclusiveNetwork?: boolean;
   }): Promise<string>;
   deployApp(opts: {
     name: string;

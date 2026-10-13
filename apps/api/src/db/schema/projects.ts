@@ -10,6 +10,7 @@ import { relations } from "drizzle-orm";
 
 import { databases } from "./databases";
 import { applications } from "./applications";
+import { gameServers } from "./game-servers";
 import { projectMembers } from "./project-members";
 import { notificationChannels } from "./notification-channels";
 
@@ -29,6 +30,7 @@ const projects = pgTable("projects", {
 const projectRelations = relations(projects, ({ many }) => ({
   applications: many(applications),
   databases: many(databases),
+  gameServers: many(gameServers),
   notificationChannels: many(notificationChannels),
   members: many(projectMembers),
 }));

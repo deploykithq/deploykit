@@ -13,11 +13,14 @@ import {
 } from "@trpc/server/adapters/fastify";
 import { appRouter, type AppRouter } from "./routers/index";
 import { createContext } from "./trpc";
-import { isDockerAvailable, ensureNetwork } from "./lib/docker";
+import { isDockerAvailable, ensureNetwork, joinOwnContainer } from "./lib/docker";
+import { GAME_NETWORK } from "./lib/game-isolation";
 import { initSocket } from "./lib/socket";
 import { startDeployWorker } from "./workers/deploy.worker";
 import { startComposeDeployWorker } from "./workers/compose-deploy.worker";
 import { startBackupWorker } from "./workers/backup.worker";
+import { startGameBackupWorker } from "./workers/game-backup.worker";
+import { registerGameFileRoutes } from "./routes/game-files";
 import { startTaskWorker } from "./workers/task.worker";
 import { reconcileSchedules } from "./lib/task-scheduler";
 import { startMetricsScheduler } from "./workers/metrics.scheduler";
@@ -240,6 +243,9 @@ async function main() {
     } satisfies FastifyTRPCPluginOptions<AppRouter>["trpcOptions"],
   });
 
+  // Game server file uploads / downloads (streamed, so not through tRPC)
+  await registerGameFileRoutes(server);
+
   // Health check
   server.get("/health", async () => ({
     status: "ok",
@@ -318,6 +324,11 @@ async function main() {
   if (dockerOk) {
     server.log.info("Docker connection: OK");
     await ensureNetwork("deploykit-network");
+    // Game servers are kept off deploykit-network; the API joins theirs for RCON.
+    await ensureNetwork(GAME_NETWORK);
+    await joinOwnContainer(GAME_NETWORK).catch((err) =>
+      server.log.warn(`Could not join ${GAME_NETWORK}: ${err.message} — game consoles over RCON will fail`),
+    );
     // Pre-warm Trivy's vuln DB so the first scanned deploy isn't slow.
     if (scanConfig.enabledByDefault) prewarmTrivyDb();
   } else {
@@ -342,6 +353,7 @@ async function main() {
   startDeployWorker();
   startComposeDeployWorker();
   startBackupWorker();
+  startGameBackupWorker();
   startTaskWorker();
   // Registers every task and backup cron with BullMQ, and drops schedules
   // whose row disappeared while this process was down.

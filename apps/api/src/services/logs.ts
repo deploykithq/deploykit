@@ -23,7 +23,7 @@ interface StreamMeta {
    * container in the stack persists its lines under the same serviceId, which
    * is what makes the stack's Logs tab a single stream.
    */
-  serviceType: "application" | "database" | "compose";
+  serviceType: "application" | "database" | "compose" | "game_server";
 }
 
 // Track active log streams so we can clean them up.

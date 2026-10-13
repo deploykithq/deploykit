@@ -4,6 +4,7 @@ import {
   Box,
   Database,
   Download,
+  Gamepad2,
   Layers,
   Plus,
   Trash2,
@@ -11,6 +12,7 @@ import {
 
 import { Button } from "@shared/components/button";
 import { Card } from "@shared/components/card";
+import { CollapsibleSection } from "@shared/components/collapsible-section";
 import { ConfirmDialog } from "@shared/components/confirm-dialog";
 import { EmptyState } from "@shared/components/empty-state";
 
@@ -29,6 +31,9 @@ import {
   NewComposeModal,
 } from "@compose/infrastructure/ui/components";
 
+import { GameServerCard } from "@game-server/infrastructure/ui/components/GameServerCard";
+import { NewGameServerModal } from "@game-server/infrastructure/ui/components/NewGameServerModal";
+
 import { useProjectDetail } from "@project/infrastructure/ui/hooks/useProjectDetail";
 
 export const ProjectDetailPage: React.FC = memo(function ProjectDetailPage() {
@@ -46,6 +51,9 @@ export const ProjectDetailPage: React.FC = memo(function ProjectDetailPage() {
     setShowNewDb,
     showNewCompose,
     setShowNewCompose,
+    showNewGame,
+    setShowNewGame,
+    gameServers,
     composeStacks,
     showDeleteConfirm,
     setShowDeleteConfirm,
@@ -118,6 +126,16 @@ export const ProjectDetailPage: React.FC = memo(function ProjectDetailPage() {
             <Button
               variant="secondary"
               size="sm"
+              onClick={() => setShowNewGame(true)}
+            >
+              <Gamepad2 className="w-3.5 h-3.5" />
+              New game server
+            </Button>
+          )}
+          {canWrite && (
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => setShowNewDb(true)}
             >
               <Database className="w-3.5 h-3.5" />
@@ -140,10 +158,12 @@ export const ProjectDetailPage: React.FC = memo(function ProjectDetailPage() {
       )}
 
       {/* Applications */}
-      <section>
-        <h2 className="text-xs font-medium text-text-muted uppercase tracking-wider mb-3">
-          Applications
-        </h2>
+      <CollapsibleSection
+        title="Applications"
+        storageKey="project:applications"
+        defaultOpen
+        count={project.applications.length}
+      >
         {!project.applications.length ? (
           <Card>
             <EmptyState
@@ -171,13 +191,14 @@ export const ProjectDetailPage: React.FC = memo(function ProjectDetailPage() {
             ))}
           </div>
         )}
-      </section>
+      </CollapsibleSection>
 
       {/* Compose stacks */}
-      <section>
-        <h2 className="text-xs font-medium text-text-muted uppercase tracking-wider mb-3">
-          Stacks
-        </h2>
+      <CollapsibleSection
+        title="Stacks"
+        storageKey="project:stacks"
+        count={composeStacks.length}
+      >
         {!composeStacks.length ? (
           <Card>
             <EmptyState
@@ -205,13 +226,49 @@ export const ProjectDetailPage: React.FC = memo(function ProjectDetailPage() {
             ))}
           </div>
         )}
-      </section>
+      </CollapsibleSection>
+
+      {/* Game servers */}
+      <CollapsibleSection
+        title="Game servers"
+        storageKey="project:game-servers"
+        count={gameServers.length}
+      >
+        {!gameServers.length ? (
+          <Card>
+            <EmptyState
+              icon={<Gamepad2 className="w-6 h-6" />}
+              title="No game servers"
+              description="Host a Minecraft, Valheim or other dedicated server from the game catalogue."
+              action={
+                canWrite ? (
+                  <Button size="sm" onClick={() => setShowNewGame(true)}>
+                    <Plus className="w-3.5 h-3.5" />
+                    New game server
+                  </Button>
+                ) : undefined
+              }
+            />
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 gap-3">
+            {gameServers.map((server) => (
+              <GameServerCard
+                key={server.id}
+                server={server}
+                onClick={() => onOpenService("games", server.id)}
+              />
+            ))}
+          </div>
+        )}
+      </CollapsibleSection>
 
       {/* Databases */}
-      <section>
-        <h2 className="text-xs font-medium text-text-muted uppercase tracking-wider mb-3">
-          Databases
-        </h2>
+      <CollapsibleSection
+        title="Databases"
+        storageKey="project:databases"
+        count={project.databases.length}
+      >
         {!project.databases.length ? (
           <Card>
             <EmptyState
@@ -239,7 +296,7 @@ export const ProjectDetailPage: React.FC = memo(function ProjectDetailPage() {
             ))}
           </div>
         )}
-      </section>
+      </CollapsibleSection>
 
       {/* Notifications */}
       <NotificationsSection projectId={projectId} />
@@ -261,6 +318,12 @@ export const ProjectDetailPage: React.FC = memo(function ProjectDetailPage() {
       <NewComposeModal
         open={showNewCompose}
         onClose={() => setShowNewCompose(false)}
+        projectId={projectId}
+      />
+
+      <NewGameServerModal
+        open={showNewGame}
+        onClose={() => setShowNewGame(false)}
         projectId={projectId}
       />
 

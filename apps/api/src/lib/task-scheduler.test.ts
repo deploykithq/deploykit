@@ -4,12 +4,14 @@ import {
   diffSchedules,
   taskSchedulerId,
   backupSchedulerId,
+  gameBackupSchedulerId,
 } from "./task-scheduler";
 
 describe("scheduler ids", () => {
   it("namespaces tasks and backups so one reconcile cannot delete the other", () => {
     expect(taskSchedulerId("abc")).toBe("task:abc");
     expect(backupSchedulerId("abc")).toBe("backup:abc");
+    expect(gameBackupSchedulerId("abc")).toBe("gamebackup:abc");
   });
 });
 
@@ -48,5 +50,12 @@ describe("diffSchedules", () => {
     // prefix would have been unavailable.
     const diff = diffSchedules([], ["task:1", "backup:9"], "task");
     expect(diff.toRemove).toEqual(["task:1"]);
+  });
+
+  it("keeps database and game backups apart although one name contains the other", () => {
+    // "gamebackup:" does not start with "backup:", and vice versa.
+    const existing = ["backup:1", "gamebackup:2"];
+    expect(diffSchedules([], existing, "backup").toRemove).toEqual(["backup:1"]);
+    expect(diffSchedules([], existing, "gamebackup").toRemove).toEqual(["gamebackup:2"]);
   });
 });

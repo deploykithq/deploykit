@@ -27,6 +27,7 @@ export default defineConfig({
       "@status": path.resolve(__dirname, "./src/features/status"),
       "@task": path.resolve(__dirname, "./src/features/task"),
       "@github": path.resolve(__dirname, "./src/features/github"),
+      "@game-server": path.resolve(__dirname, "./src/features/game-server"),
     },
   },
   build: {

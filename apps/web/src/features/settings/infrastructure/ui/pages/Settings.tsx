@@ -3,6 +3,7 @@ import {
   PasswordSection,
   ConfigTransferSection,
   GitHubAppSection,
+  GameModsSection,
   InfoSection,
 } from "@settings/infrastructure/ui/components";
 
@@ -26,6 +27,11 @@ export const SettingsPage: React.FC = () => {
         {isAdmin && (
           <div className="col-span-1 md:col-span-2">
             <GitHubAppSection />
+          </div>
+        )}
+        {isAdmin && (
+          <div className="col-span-1 md:col-span-2">
+            <GameModsSection />
           </div>
         )}
         {isAdmin && (

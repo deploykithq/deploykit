@@ -5,6 +5,7 @@ import {
   applications,
   databases,
   composeServices,
+  gameServers,
   alertRules,
   alertEvents,
 } from "../db/schema/index";
@@ -293,7 +294,7 @@ async function pollComposeStack(
 
 async function tick(): Promise<void> {
   try {
-    const [apps, dbs, stacks] = await Promise.all([
+    const [apps, dbs, stacks, games] = await Promise.all([
       db.query.applications.findMany({
         where: eq(applications.status, "running"),
         columns: { id: true, name: true, containerId: true },
@@ -306,6 +307,10 @@ async function tick(): Promise<void> {
         where: eq(composeServices.status, "running"),
         columns: { id: true, name: true },
       }),
+      db.query.gameServers.findMany({
+        where: eq(gameServers.status, "running"),
+        columns: { id: true, name: true, containerId: true },
+      }),
     ]);
 
     // One Redis round-trip for the whole tick; the disk scheduler refreshes
@@ -314,6 +319,7 @@ async function tick(): Promise<void> {
       ...apps.map((a) => a.id),
       ...dbs.map((d) => d.id),
       ...stacks.map((s) => s.id),
+      ...games.map((g) => g.id),
     ]);
 
     const tasks: Promise<void>[] = [];
@@ -350,6 +356,20 @@ async function tick(): Promise<void> {
       tasks.push(
         pollComposeStack(stack.id, stack.name, diskById.get(stack.id) ?? 0),
       );
+    }
+
+    for (const game of games) {
+      if (game.containerId) {
+        tasks.push(
+          pollContainer(
+            game.containerId,
+            game.id,
+            "game_server",
+            game.name,
+            diskById.get(game.id) ?? 0,
+          ),
+        );
+      }
     }
 
     // Concurrent but isolated — one failure doesn't block others

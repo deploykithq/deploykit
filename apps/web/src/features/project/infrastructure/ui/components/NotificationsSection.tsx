@@ -3,6 +3,7 @@ import { Bell, Plus } from "lucide-react";
 
 import { Button } from "@shared/components/button";
 import { Card } from "@shared/components/card";
+import { CollapsibleSection } from "@shared/components/collapsible-section";
 import { EmptyState } from "@shared/components/empty-state";
 
 import {
@@ -31,62 +32,64 @@ export const NotificationsSection: React.FC<NotificationsSectionPropsI> = memo(
     } = useProjectNotifications(projectId);
 
     return (
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-medium text-text-muted uppercase tracking-wider">
-            Notifications
-          </h2>
-          {canWrite && channels.length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setEditChannel(null);
-                setShowModal(true);
-              }}
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Add Channel
-            </Button>
-          )}
-        </div>
-
-        {isLoading ? (
-          <p className="text-xs text-text-muted">Loading…</p>
-        ) : channels.length === 0 ? (
-          <Card>
-            <EmptyState
-              icon={<Bell className="w-6 h-6" />}
-              title="No notification channels"
-              description="Add a channel to receive alerts on deploy, failures, and more."
-              action={
-                canWrite ? (
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      setEditChannel(null);
-                      setShowModal(true);
-                    }}
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Add Channel
-                  </Button>
-                ) : undefined
-              }
-            />
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 gap-3">
-            {channels.map((channel) => (
-              <NotificationChannelCard
-                key={channel.id}
-                channel={channel as any}
-                projectId={projectId}
-                onEdit={handleEdit}
+      <>
+        <CollapsibleSection
+          title="Notifications"
+          storageKey="project:notifications"
+          count={isLoading ? undefined : channels.length}
+          actions={
+            canWrite && channels.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setEditChannel(null);
+                  setShowModal(true);
+                }}
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Channel
+              </Button>
+            )
+          }
+        >
+          {isLoading ? (
+            <p className="text-xs text-text-muted">Loading…</p>
+          ) : channels.length === 0 ? (
+            <Card>
+              <EmptyState
+                icon={<Bell className="w-6 h-6" />}
+                title="No notification channels"
+                description="Add a channel to receive alerts on deploy, failures, and more."
+                action={
+                  canWrite ? (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setEditChannel(null);
+                        setShowModal(true);
+                      }}
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Add Channel
+                    </Button>
+                  ) : undefined
+                }
               />
-            ))}
-          </div>
-        )}
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 gap-3">
+              {channels.map((channel) => (
+                <NotificationChannelCard
+                  key={channel.id}
+                  channel={channel as any}
+                  projectId={projectId}
+                  onEdit={handleEdit}
+                />
+              ))}
+            </div>
+          )}
+        </CollapsibleSection>
 
         <NotificationChannelModal
           open={showModal}
@@ -94,7 +97,7 @@ export const NotificationsSection: React.FC<NotificationsSectionPropsI> = memo(
           projectId={projectId}
           editChannel={editChannel}
         />
-      </section>
+      </>
     );
   },
 );

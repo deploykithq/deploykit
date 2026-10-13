@@ -17,10 +17,15 @@ export const useProjectDetail = () => {
   const onBack = () => navigate({ to: "/" });
 
   const onOpenService = (
-    type: "application" | "database" | "compose",
+    type: "application" | "database" | "compose" | "games",
     id: string,
   ) => {
-    if (type === "application") {
+    if (type === "games") {
+      navigate({
+        to: "/projects/$projectId/games/$gameServerId",
+        params: { projectId, gameServerId: id },
+      });
+    } else if (type === "application") {
       navigate({
         to: "/projects/$projectId/apps/$appId",
         params: { projectId, appId: id },
@@ -41,6 +46,7 @@ export const useProjectDetail = () => {
   const [showNewApp, setShowNewApp] = useState(false);
   const [showNewDb, setShowNewDb] = useState(false);
   const [showNewCompose, setShowNewCompose] = useState(false);
+  const [showNewGame, setShowNewGame] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const canWrite = useAuthStore((s) => s.canWrite)();
@@ -109,6 +115,9 @@ export const useProjectDetail = () => {
     setShowNewDb,
     showNewCompose,
     setShowNewCompose,
+    showNewGame,
+    setShowNewGame,
+    gameServers: project?.gameServers ?? [],
     composeStacks: composeStacks ?? [],
     showDeleteConfirm,
     setShowDeleteConfirm,

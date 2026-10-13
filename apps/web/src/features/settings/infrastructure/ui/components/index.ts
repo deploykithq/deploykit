@@ -6,3 +6,4 @@ export { PasswordSection } from "./PasswordSection";
 export { ProfileSection } from "./ProfileSection";
 export { SectionCard } from "./SectionCard";
 export { RoleBadge } from "./RoleBadge";
+export { GameModsSection } from "./GameModsSection";

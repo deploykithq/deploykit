@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   Loader2,
   Clock,
+  Gamepad2,
 } from "lucide-react";
 
 const ACTION_CONFIG: Record<
@@ -86,6 +87,56 @@ const ACTION_CONFIG: Record<
   "database.backup": {
     label: "triggered backup",
     icon: Database,
+    color: "text-accent",
+  },
+  "game_server.create": {
+    label: "created game server",
+    icon: Gamepad2,
+    color: "text-green-400",
+  },
+  "game_server.delete": {
+    label: "deleted game server",
+    icon: XCircle,
+    color: "text-danger",
+  },
+  "game_server.start": {
+    label: "started game server",
+    icon: Zap,
+    color: "text-accent",
+  },
+  "game_server.stop": {
+    label: "stopped game server",
+    icon: AlertTriangle,
+    color: "text-warning",
+  },
+  "game_server.restart": {
+    label: "restarted game server",
+    icon: Zap,
+    color: "text-accent",
+  },
+  "game_server.restore": {
+    label: "restored world backup",
+    icon: Gamepad2,
+    color: "text-warning",
+  },
+  "game_server.backup": {
+    label: "backed up game server",
+    icon: Gamepad2,
+    color: "text-accent",
+  },
+  "game_server.update": {
+    label: "updated game server",
+    icon: Gamepad2,
+    color: "text-accent",
+  },
+  "game_server.mod_add": {
+    label: "added a mod to",
+    icon: Gamepad2,
+    color: "text-green-400",
+  },
+  "game_server.mods_apply": {
+    label: "applied mods on",
+    icon: Gamepad2,
     color: "text-accent",
   },
   "project.create": {

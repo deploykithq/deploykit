@@ -1,6 +1,11 @@
 import { eq } from "drizzle-orm";
 import { db } from "../db/index";
-import { applications, databases, composeServices } from "../db/schema/index";
+import {
+  applications,
+  databases,
+  composeServices,
+  gameServers,
+} from "../db/schema/index";
 import { DockerService } from "../services/docker";
 import {
   ensureLogStream,
@@ -25,11 +30,11 @@ const FLUSH_INTERVAL_MS = 2_000;
 
 const localDocker = new DockerService();
 
-type ServiceTypeT = "application" | "database" | "compose";
+type ServiceTypeT = "application" | "database" | "compose" | "game_server";
 
 async function tick(): Promise<void> {
   try {
-    const [apps, dbs, stacks] = await Promise.all([
+    const [apps, dbs, stacks, games] = await Promise.all([
       db.query.applications.findMany({
         where: eq(applications.status, "running"),
         columns: { id: true, containerId: true },
@@ -42,6 +47,10 @@ async function tick(): Promise<void> {
         where: eq(composeServices.status, "running"),
         columns: { id: true },
       }),
+      db.query.gameServers.findMany({
+        where: eq(gameServers.status, "running"),
+        columns: { id: true, containerId: true },
+      }),
     ]);
 
     const running = new Map<string, { id: string; type: ServiceTypeT }>();
@@ -50,6 +59,9 @@ async function tick(): Promise<void> {
     }
     for (const d of dbs) {
       if (d.containerId) running.set(d.containerId, { id: d.id, type: "database" });
+    }
+    for (const g of games) {
+      if (g.containerId) running.set(g.containerId, { id: g.id, type: "game_server" });
     }
 
     // A stack stores no container ids — it owns several, and Compose recreates

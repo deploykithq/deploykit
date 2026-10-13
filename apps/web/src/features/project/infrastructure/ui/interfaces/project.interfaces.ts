@@ -1,5 +1,7 @@
 import type { DatabaseType } from "@deploykit/shared";
 
+import type { GameServerCardItemI } from "@game-server/infrastructure/ui/interfaces/game-server.interfaces";
+
 import type { CHANNEL_TYPES } from "@project/infrastructure/ui/constants/project.constants";
 
 type SourceTypeT = "github" | "gitlab" | "git" | "docker_image";
@@ -50,6 +52,7 @@ interface ProjectI {
   statusPageTitle?: string | null;
   applications: ApplicationI[];
   databases: ProjectDatabaseI[];
+  gameServers?: GameServerCardItemI[];
 }
 
 export type {

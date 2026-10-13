@@ -5,6 +5,8 @@ const STATUS_DOT_COLORS: Record<string, string> = {
   building: "bg-warning",
   deploying: "bg-warning",
   queued: "bg-warning",
+  provisioning: "bg-warning",
+  restoring: "bg-warning",
   stopped: "bg-text-muted",
   idle: "bg-text-muted",
   disconnected: "bg-text-muted",
@@ -15,6 +17,13 @@ const STATUS_DOT_COLORS: Record<string, string> = {
 const STATUS_DOT_FALLBACK = "bg-text-muted";
 
 /** Estados en curso: el punto late para indicar actividad. */
-const ACTIVE_STATUSES = ["running", "building", "deploying", "queued"];
+const ACTIVE_STATUSES = [
+  "running",
+  "building",
+  "deploying",
+  "queued",
+  "provisioning",
+  "restoring",
+];
 
 export { STATUS_DOT_COLORS, STATUS_DOT_FALLBACK, ACTIVE_STATUSES };

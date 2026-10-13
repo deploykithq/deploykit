@@ -82,6 +82,11 @@ const ComposeDetailPage = lazy(() =>
     default: m.ComposeDetailPage,
   })),
 );
+const GameServerDetailPage = lazy(() =>
+  import("@game-server/infrastructure/ui/pages/GameServerDetailPage").then(
+    (m) => ({ default: m.GameServerDetailPage }),
+  ),
+);
 const StatusPage = lazy(() =>
   import("@status/infrastructure/ui/pages/StatusPage").then((m) => ({
     default: m.StatusPage,
@@ -259,6 +264,12 @@ export const dbDetailRoute = createRoute({
   component: withSuspense(DatabaseDetailPage),
 });
 
+export const gameServerDetailRoute = createRoute({
+  getParentRoute: () => authLayoutRoute,
+  path: "/projects/$projectId/games/$gameServerId",
+  component: withSuspense(GameServerDetailPage),
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   statusPageRoute,
@@ -269,6 +280,7 @@ const routeTree = rootRoute.addChildren([
     appDetailRoute,
     composeDetailRoute,
     dbDetailRoute,
+    gameServerDetailRoute,
     serversRoute,
     sshKeysRoute,
     usersRoute,

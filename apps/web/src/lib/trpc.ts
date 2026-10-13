@@ -1,4 +1,5 @@
 import { createTRPCReact, httpBatchLink } from "@trpc/react-query";
+import type { inferRouterClient } from "@trpc/client";
 import type { AppRouter } from "../../../api/src/routers/index";
 import { useAuthStore, isTokenExpired } from "./auth";
 
@@ -110,4 +111,12 @@ function createTRPCClient() {
   });
 }
 
-export { createTRPCClient };
+/**
+ * The router as a plain client. Only used for types: features derive a
+ * procedure's output with `Awaited<ReturnType<AppRouterClientT["x"]["y"]["query"]>>`
+ * instead of restating the API's shapes by hand.
+ */
+type AppRouterClientT = inferRouterClient<AppRouter>;
+
+export { createTRPCClient, getAccessToken };
+export type { AppRouterClientT };

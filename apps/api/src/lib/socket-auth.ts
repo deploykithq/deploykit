@@ -7,11 +7,12 @@ import {
   databases,
   deployments,
   composeServices,
+  gameServers,
   taskRuns,
 } from "../db/schema/index";
 import { db } from "../db/index";
 
-import { getProjectRole, canViewSecrets } from "./permissions";
+import { getProjectRole, canOperate, canViewSecrets } from "./permissions";
 
 import type { UserT } from "../db/schema/index";
 
@@ -41,7 +42,8 @@ const verifySocketAuth = async (
 };
 
 /**
- * Resolve the owning project of an application, database or Compose stack,
+ * Resolve the owning project of an application, database, game server or
+ * Compose stack,
  * referenced either by its own UUID (serviceId) or by its Docker container id.
  */
 const findProjectIdByServiceRef = async (
@@ -64,6 +66,14 @@ const findProjectIdByServiceRef = async (
     columns: { projectId: true },
   });
   if (database) return database.projectId;
+
+  const gameServer = await db.query.gameServers.findFirst({
+    where: isUuid
+      ? or(eq(gameServers.id, ref), eq(gameServers.containerId, ref))
+      : eq(gameServers.containerId, ref),
+    columns: { projectId: true },
+  });
+  if (gameServer) return gameServer.projectId;
 
   // A Compose stack owns many containers and stores none of their ids, so it
   // is only ever addressed by its own UUID. Its containers are reachable
@@ -180,8 +190,24 @@ const canViewTaskRun = async (user: UserT, runId: string): Promise<boolean> => {
   return canViewSecrets(await getProjectRole(user, projectId));
 };
 
+const terminalAccess = async (
+  user: UserT,
+  labels: Record<string, string>,
+  containerId: string,
+): Promise<"ok" | "not_found" | "forbidden"> => {
+  if (user.role !== "admin" && user.role !== "operator") return "forbidden";
+  const ref = labels["deploykit.service"] || containerId;
+  if (typeof ref !== "string" || ref.length === 0 || ref.length > 100) return "not_found";
+  const projectId = await findProjectIdByServiceRef(ref);
+  if (!projectId) return "not_found";
+  const role = await getProjectRole(user, projectId);
+  if (!role) return "not_found";
+  return canOperate(role) ? "ok" : "forbidden";
+};
+
 export {
   verifySocketAuth,
+  terminalAccess,
   canViewDeployment,
   canViewService,
   canViewTaskRun,

@@ -3,6 +3,7 @@ import { ExternalLink, Globe } from "lucide-react";
 
 import { Button } from "@shared/components/button";
 import { Card } from "@shared/components/card";
+import { CollapsibleSection } from "@shared/components/collapsible-section";
 import { Input } from "@shared/components/input";
 
 import { useStatusPageSection } from "@project/infrastructure/ui/hooks/useStatusPageSection";
@@ -31,12 +32,11 @@ export const StatusPageSection: React.FC<StatusPageSectionPropsI> = memo(
     } = useStatusPageSection(project);
 
     return (
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-medium text-text-muted uppercase tracking-wider">
-            Status Page
-          </h2>
-          {publicUrl && (
+      <CollapsibleSection
+        title="Status Page"
+        storageKey="project:status-page"
+        actions={
+          publicUrl && (
             <a
               href={publicUrl}
               target="_blank"
@@ -45,9 +45,9 @@ export const StatusPageSection: React.FC<StatusPageSectionPropsI> = memo(
             >
               View <ExternalLink className="w-3 h-3" />
             </a>
-          )}
-        </div>
-
+          )
+        }
+      >
         <Card>
           <div className="space-y-4">
             <div className="flex items-start gap-3">
@@ -140,7 +140,7 @@ export const StatusPageSection: React.FC<StatusPageSectionPropsI> = memo(
             </div>
           </div>
         </Card>
-      </section>
+      </CollapsibleSection>
     );
   },
 );

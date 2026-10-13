@@ -1,6 +1,6 @@
 import type { Socket } from "socket.io";
 import { docker } from "../lib/docker";
-import { verifySocketAuth } from "../lib/socket-auth";
+import { terminalAccess, verifySocketAuth } from "../lib/socket-auth";
 import type Dockerode from "dockerode";
 
 interface TerminalSession {
@@ -92,16 +92,25 @@ export function registerTerminalHandlers(socket: Socket): void {
         return;
       }
 
-      // 2. Verify container is managed by DeployKit
+      // 2. Verify the container and who owns it. Everything after uses the
+      // inspected id, never the client's string, which could be a name.
+      let resolvedId: string;
       try {
         const container = docker.getContainer(containerId);
         const info = await container.inspect();
         const labels = info.Config?.Labels || {};
 
-        if (!labels["deploykit.managed"] && !labels["deploykit.service"]) {
+        // Both layers: the global role above, and operator+ on the project
+        // that owns this container. A non-member learns nothing about it.
+        resolvedId = info.Id;
+        const access = await terminalAccess(auth, labels, info.Id);
+        if (access !== "ok") {
           socket.emit("terminal:error", {
             sessionId,
-            error: "Container is not managed by DeployKit",
+            error:
+              access === "forbidden"
+                ? "Unauthorized — operator role on this project required"
+                : "Container not found",
           });
           return;
         }
@@ -114,23 +123,20 @@ export function registerTerminalHandlers(socket: Socket): void {
           });
           return;
         }
-      } catch (err: any) {
-        socket.emit("terminal:error", {
-          sessionId,
-          error: `Container not found: ${err.message}`,
-        });
+      } catch {
+        socket.emit("terminal:error", { sessionId, error: "Container not found" });
         return;
       }
 
       // 3. Detect shell
-      const shell = await detectShell(containerId);
+      const shell = await detectShell(resolvedId);
       console.log(
-        `[terminal] Starting session ${sessionId} → container ${containerId.slice(0, 12)} (${shell})`,
+        `[terminal] Starting session ${sessionId} → container ${resolvedId.slice(0, 12)} (${shell})`,
       );
 
       // 4. Create exec
       try {
-        const container = docker.getContainer(containerId);
+        const container = docker.getContainer(resolvedId);
         const exec = await container.exec({
           Cmd: [shell],
           AttachStdin: true,
@@ -160,7 +166,7 @@ export function registerTerminalHandlers(socket: Socket): void {
         sessions.set(sessionId, {
           exec,
           stream,
-          containerId,
+          containerId: resolvedId,
           socketId: socket.id,
           inactivityTimer,
         });
