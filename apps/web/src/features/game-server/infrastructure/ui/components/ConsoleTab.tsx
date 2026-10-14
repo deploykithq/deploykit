@@ -86,6 +86,13 @@ export const ConsoleTab: React.FC<GameServerTabPropsI> = memo(function ConsoleTa
             </Button>
           </div>
           {error && <p className="text-xs text-danger">{error}</p>}
+          {server.spec.contract && (
+            <p className="text-xs text-text-muted">
+              Besides the game's own commands:{" "}
+              <code className="font-mono">/dk status</code> and{" "}
+              <code className="font-mono">/dk save</code>.
+            </p>
+          )}
         </div>
       ) : (
         <p className="text-xs text-text-muted mt-3">

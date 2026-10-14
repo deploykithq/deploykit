@@ -337,3 +337,101 @@ describe("mod inputs", () => {
     expect(addGameModSchema.safeParse({ id, source: "nope", ref: "x" }).success).toBe(false);
   });
 });
+
+describe("gameSpecSchema contract", () => {
+  /** A definition for an image that follows the DeployKit game image contract. */
+  const CONTRACT = {
+    id: "minecraft-java",
+    name: "Minecraft: Java Edition",
+    version: "3",
+    description: "Minecraft on the DeployKit image.",
+    contract: 1,
+    image: "ghcr.io/deploykithq/game-minecraft-java:0.1-${java_tag}",
+    ports: [{ name: "game", protocol: "tcp", container: 25565 }],
+    variables: [
+      { key: "type", label: "Type", type: "select", default: "paper", options: [{ label: "Paper", value: "paper" }, { label: "Fabric", value: "fabric" }] },
+      { key: "java_tag", label: "Java", type: "select", default: "java25", options: [{ label: "Java 25", value: "java25" }] },
+      { key: "mc_version", label: "Version", type: "string", default: "LATEST" },
+    ],
+    env: { DK_GAME_VERSION: "${mc_version}" },
+    volumes: [
+      { name: "data", path: "/data", primary: true },
+      { name: "server", path: "/server", browsable: false, backup: false },
+    ],
+    console: { method: "stdin" },
+    stop: { timeoutSec: 65 },
+    readyPattern: "\\[deploykit\\] ready",
+    backup: { preCommands: ["/dk save-off", "/dk save"], postCommands: ["/dk save-on"] },
+    mods: {
+      sources: [
+        { source: "modrinth", env: "DK_MODS_MODRINTH" },
+        { source: "curseforge", env: "DK_MODS_CURSEFORGE", apiKeyEnv: "DK_CURSEFORGE_API_KEY" },
+      ],
+      loader: { from: "type", map: { fabric: { loaders: ["fabric"], kind: "mod" } } },
+      modpacks: [
+        {
+          source: "modrinth",
+          env: {
+            DK_MODPACK_SOURCE: "modrinth",
+            DK_MODPACK_PROJECT: "${dk_modpack_project}",
+            DK_MODPACK_VERSION: "${dk_modpack_version}",
+          },
+        },
+      ],
+    },
+  };
+
+  it("accepts a definition that leaves the inputs to DeployKit", () => {
+    expect(errorsOf(CONTRACT)).toEqual([]);
+    expect(gameSpecSchema.parse(CONTRACT).contract).toBe(1);
+  });
+
+  it("knows only version 1", () => {
+    expect(errorsOf({ ...CONTRACT, contract: 2 })).not.toEqual([]);
+  });
+
+  it("insists on the stdin console and lets the image stop the game", () => {
+    expect(errorsOf({ ...CONTRACT, console: { method: "none" } }).join()).toMatch(/stdin/);
+    expect(errorsOf({ ...CONTRACT, stop: { timeoutSec: 65, command: "stop" } }).join()).toMatch(/SIGTERM/);
+    expect(errorsOf({ ...CONTRACT, stop: { timeoutSec: 65, signal: "SIGINT" } }).join()).toMatch(/SIGTERM/);
+    // Docker must outlast the supervisor's own timeout plus its SIGKILL grace.
+    expect(errorsOf({ ...CONTRACT, stop: { timeoutSec: 15 } }).join()).toMatch(/At least 20/);
+    expect(errorsOf({ ...CONTRACT, command: ["java", "-jar"] }).join()).toMatch(/no command/);
+    expect(errorsOf({ ...CONTRACT, readyPattern: "Done \\(" }).join()).toMatch(/readiness/);
+  });
+
+  it("keeps the /data and /server layout", () => {
+    const volumes = (v: unknown[]) => errorsOf({ ...CONTRACT, volumes: v }).join();
+    expect(volumes([{ name: "data", path: "/config", primary: true }])).toMatch(/primary volume/);
+    expect(volumes([CONTRACT.volumes[0], { name: "x", path: "/opt/game", backup: false }])).toMatch(/only/);
+    expect(volumes([CONTRACT.volumes[0], { name: "server", path: "/server" }])).toMatch(/backup false/);
+  });
+
+  it("refuses to set the DK_* inputs DeployKit injects", () => {
+    expect(errorsOf({ ...CONTRACT, env: { DK_VAR_TYPE: "paper" } }).join()).toMatch(/DK_GAME_VERSION/);
+    expect(errorsOf({ ...CONTRACT, env: { DK_STOP_TIMEOUT: "5" } })).not.toEqual([]);
+    expect(
+      errorsOf({ ...CONTRACT, ports: [{ ...CONTRACT.ports[0], env: "SERVER_PORT" }] }).join(),
+    ).toMatch(/DK_PORT_GAME/);
+  });
+
+  it("needs lower-case keys so each maps to one DK_VAR_<KEY>", () => {
+    const variables = [...CONTRACT.variables, { key: "Seed", label: "Seed", type: "string" }];
+    expect(errorsOf({ ...CONTRACT, variables }).join()).toMatch(/lower case/);
+  });
+
+  it("reads mods and modpacks from the contract's variables", () => {
+    const sources = [{ source: "modrinth", env: "MODRINTH_PROJECTS" }];
+    expect(errorsOf({ ...CONTRACT, mods: { ...CONTRACT.mods, sources } }).join()).toMatch(
+      /DK_MODS_MODRINTH/,
+    );
+    const noKey = [{ source: "curseforge", env: "DK_MODS_CURSEFORGE" }, CONTRACT.mods.sources[0]];
+    expect(errorsOf({ ...CONTRACT, mods: { ...CONTRACT.mods, sources: noKey } }).join()).toMatch(
+      /DK_CURSEFORGE_API_KEY/,
+    );
+    const modpacks = [{ source: "modrinth", env: { TYPE: "MODRINTH", DK_MODPACK_SOURCE: "curseforge" } }];
+    const errors = errorsOf({ ...CONTRACT, mods: { ...CONTRACT.mods, modpacks } }).join();
+    expect(errors).toMatch(/DK_MODPACK_PROJECT/);
+    expect(errors).toMatch(/Must be "modrinth"/);
+  });
+});

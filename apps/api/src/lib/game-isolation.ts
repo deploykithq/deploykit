@@ -7,10 +7,11 @@
 const GAME_NETWORK = "deploykit-games";
 
 /**
- * Hardening every game container gets. Verified against the catalogue's
- * images (itzg, ryshe/terraria, valheim-server): their entrypoints still drop
- * from root to their own user, which needs SETUID/SETGID/CHOWN — kept. The
- * volume helpers take the same, as Docker HostConfig keys.
+ * Hardening every game container gets. The catalogue's images (DeployKit's
+ * own, deploykithq/deploykit-game-images) start as root and drop to uid 1000
+ * with syscalls, which needs SETUID/SETGID/CHOWN — kept; `scripts/smoke-run.sh`
+ * there boots every image under exactly these flags. The volume helpers take
+ * the same, as Docker HostConfig keys.
  */
 const GAME_HARDENING = {
   securityOpt: ["no-new-privileges:true"],

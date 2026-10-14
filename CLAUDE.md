@@ -148,6 +148,19 @@ running server. v1 runs on the **local daemon only**.
   containers and their volume helpers also get `GAME_HARDENING`
   (no-new-privileges, dropped NET_RAW/MKNOD/…, a pids limit) — check a new
   game's image still boots under it.
+- **Contract images.** The catalogue's games run DeployKit's own images
+  (`deploykithq/deploykit-game-images`; the contract is its `CONTRACT.md`). A
+  definition with `"contract": 1` passes values only: `buildContainerSpec`
+  injects `DK_VAR_<KEY>` per variable, `DK_PORT_<NAME>` (the port to listen
+  on *inside* the container), `DK_SERVER_NAME`, `DK_MEMORY_MB`, `DK_HEAP_MB`
+  and `DK_STOP_TIMEOUT` = `stop.timeoutSec` − 10, so Docker outlasts the
+  supervisor's own SIGTERM/SIGKILL. `checkContract` refuses what the image
+  owns: a console other than stdin, `stop.command`/`signal`, `command`,
+  volumes other than `/data` + `/server`, mod vars other than `DK_MODS_*`.
+  Every contract game backs up with the same `/dk save-off`, `/dk save`,
+  `/dk save-on`. Mirror rule changes in the catalogue's `scripts/validate.mjs`.
+  Servers created on the old third-party images keep them (the spec is a
+  snapshot).
 - **Ports.** Clients connect straight to host ports, often UDP, so
   `game_server_ports` records every allocation under a unique
   `(server_key, host_port, protocol)` index; `services/game-ports.ts` also
