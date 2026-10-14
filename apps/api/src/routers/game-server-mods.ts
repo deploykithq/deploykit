@@ -191,7 +191,7 @@ export const gameServerModsRouter = router({
         if (err instanceof GameModError) unsupported = err.message;
         else throw err;
       }
-      // itzg resolves LATEST again on every start, while mods stay pinned:
+      // The image resolves LATEST again on every start, while mods stay pinned:
       // the next Minecraft release would break them.
       const followsLatest =
         mods.length > 0 && compatFilter(row.spec, allValues(row), row.modpack).versionAlias !== null;

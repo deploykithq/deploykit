@@ -3,6 +3,9 @@ import * as path from "path";
 import { eq } from "drizzle-orm";
 
 import {
+  CONTRACT_STOP_MARGIN_SEC,
+  contractPortEnv,
+  contractVarEnv,
   validateGameValues,
   type CreateGameServerInputT,
   type GameSpecT,
@@ -139,6 +142,25 @@ const substitutionValues = (
   ...Object.fromEntries(ports.map((p) => [`dk_port_${p.name}`, String(p.hostPort)])),
 });
 
+/**
+ * The inputs DeployKit owes an image that follows the game image contract:
+ * every variable as `DK_VAR_<KEY>`, every port as the number to listen on
+ * inside the container (the host port for `matchHost`), and a stop timeout
+ * that leaves Docker time for the supervisor's own SIGTERM and SIGKILL.
+ */
+const contractEnv = (
+  row: Pick<GameServerT, "name" | "memoryMb"> & { spec: GameSpecT },
+  values: Record<string, string>,
+  ports: PortRowI[],
+): Record<string, string> => ({
+  DK_SERVER_NAME: row.name,
+  DK_MEMORY_MB: String(row.memoryMb),
+  DK_HEAP_MB: String(Math.floor(row.memoryMb * 0.75)),
+  DK_STOP_TIMEOUT: String(row.spec.stop.timeoutSec - CONTRACT_STOP_MARGIN_SEC),
+  ...Object.fromEntries(ports.map((p) => [contractPortEnv(p.name), String(p.containerPort)])),
+  ...Object.fromEntries(row.spec.variables.map((v) => [contractVarEnv(v.key), values[v.key] ?? ""])),
+});
+
 const resolveImage = (spec: GameSpecT, values: Record<string, string>): string => {
   const image = substitute(spec.image, values);
   if (!IMAGE_REGEX.test(image)) {
@@ -164,7 +186,7 @@ const buildContainerSpec = (
   const spec = row.spec;
   const subst = substitutionValues(row, values, ports);
 
-  const env: Record<string, string> = {};
+  const env: Record<string, string> = spec.contract ? contractEnv(row, values, ports) : {};
   for (const [key, value] of Object.entries(spec.env)) env[key] = substitute(value, subst);
   for (const port of spec.ports) {
     const allocated = ports.find((p) => p.name === port.name);

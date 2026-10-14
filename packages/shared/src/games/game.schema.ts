@@ -50,6 +50,41 @@ const GAME_GENERATOR_REGEX =
 const BUILTIN_VARIABLES = ["dk_server_name", "dk_memory_mb", "dk_heap_mb"] as const;
 const PORT_VARIABLE_PREFIX = "dk_port_";
 
+/**
+ * The DeployKit game image contract (`CONTRACT.md` in
+ * `deploykithq/deploykit-game-images`). A definition with `"contract": 1`
+ * targets an image that follows it, and DeployKit then supplies the inputs
+ * itself: `DK_VAR_<KEY>` for every variable, `DK_PORT_<NAME>` for every port,
+ * `DK_SERVER_NAME`, `DK_MEMORY_MB`, `DK_HEAP_MB` and `DK_STOP_TIMEOUT`. The
+ * image owns the console (always its stdin), readiness and the clean stop.
+ */
+const GAME_CONTRACT_VERSION = 1;
+/** The line every contract image prints once the game accepts players. */
+const CONTRACT_READY_PATTERN = "\\[deploykit\\] ready";
+const CONTRACT_DATA_PATH = "/data";
+const CONTRACT_SERVER_PATH = "/server";
+/**
+ * Docker's stop timeout minus the one handed to the image: after its own
+ * timeout the supervisor still sends SIGTERM and, 5 s later, SIGKILL.
+ */
+const CONTRACT_STOP_MARGIN_SEC = 10;
+/** The env vars a contract image reads each mod source from. */
+const CONTRACT_MOD_ENV = {
+  modrinth: { env: "DK_MODS_MODRINTH" },
+  curseforge: { env: "DK_MODS_CURSEFORGE", apiKeyEnv: "DK_CURSEFORGE_API_KEY" },
+  "steam-workshop": { env: "DK_MODS_STEAM", enabledEnv: "DK_MODS_STEAM_ENABLED" },
+} as const;
+const CONTRACT_MODPACK_ENV = ["DK_MODPACK_SOURCE", "DK_MODPACK_PROJECT", "DK_MODPACK_VERSION"];
+/** The only `DK_*` a contract definition sets itself; DeployKit injects the rest. */
+const CONTRACT_ENV_ALLOWED = ["DK_GAME_VERSION"];
+/** Contract variable keys become `DK_VAR_<KEY>`: lower case keeps that 1:1. */
+const CONTRACT_VARIABLE_KEY_REGEX = /^[a-z][a-z0-9_]*$/;
+
+/** `world_name` → `DK_VAR_WORLD_NAME`. */
+const contractVarEnv = (key: string) => `DK_VAR_${key.toUpperCase()}`;
+/** `game` → `DK_PORT_GAME`. */
+const contractPortEnv = (name: string) => `DK_PORT_${name.toUpperCase()}`;
+
 const gameMetaSchema = templateMetaSchema.extend({
   category: z.string().min(1).max(30).optional(),
   players: z
@@ -208,9 +243,14 @@ const referencesIn = (value: string): Array<{ name: string; arg?: string }> =>
   }));
 
 /** The full contents of a game's `game.json`. */
-const gameSpecSchema = gameMetaSchema
+const gameSpecBaseSchema = gameMetaSchema
   .extend({
-    /** May reference select variables, e.g. "itzg/minecraft-server:${java_tag}". */
+    /**
+     * The image follows the DeployKit game image contract (version 1): see
+     * `GAME_CONTRACT_VERSION`. Absent for a third-party image.
+     */
+    contract: z.literal(GAME_CONTRACT_VERSION).optional(),
+    /** May reference select variables, e.g. "ghcr.io/deploykithq/game-minecraft-java:0.1-${java_tag}". */
     image: z.string().min(1).max(500),
     /** Overrides the image's command; `${var}` allowed in each element. */
     command: z.array(z.string().max(1_000)).max(50).optional(),
@@ -260,7 +300,9 @@ const gameSpecSchema = gameMetaSchema
     notes: z.string().max(2_000).optional(),
     /** Where mods come from and how the image receives them. */
     mods: gameModsSchema.optional(),
-  })
+  });
+
+const gameSpecSchema = gameSpecBaseSchema
   .superRefine((spec, ctx) => {
     const issue = (path: (string | number)[], message: string) =>
       ctx.addIssue({ code: z.ZodIssueCode.custom, path, message });
@@ -421,7 +463,87 @@ const gameSpecSchema = gameMetaSchema
         }
       });
     }
+
+    if (spec.contract !== undefined) checkContract(spec, issue);
   });
+
+/**
+ * What a contract image takes for granted. DeployKit injects the `DK_*`
+ * inputs and the image does the rest, so a definition may not redo either
+ * half: no console but stdin, no stop command or signal of its own, the
+ * contract's ready line, `/data` and `/server`, the contract's mod vars.
+ */
+function checkContract(
+  spec: z.infer<typeof gameSpecBaseSchema>,
+  issue: (path: (string | number)[], message: string) => void,
+): void {
+  spec.variables.forEach((v, i) => {
+    if (!CONTRACT_VARIABLE_KEY_REGEX.test(v.key)) {
+      issue(["variables", i, "key"], "Contract variable keys are lower case (they become DK_VAR_<KEY>)");
+    }
+  });
+  if (spec.command) issue(["command"], "A contract image starts itself: no command");
+  if (spec.console.method !== "stdin") {
+    issue(["console"], 'A contract image takes its console on stdin: { "method": "stdin" }');
+  }
+  if (spec.stop.command !== undefined || spec.stop.signal !== undefined) {
+    issue(["stop"], "A contract image stops the game itself on SIGTERM: set only timeoutSec");
+  }
+  if (spec.stop.timeoutSec < CONTRACT_STOP_MARGIN_SEC + 10) {
+    issue(["stop", "timeoutSec"], `At least ${CONTRACT_STOP_MARGIN_SEC + 10} seconds for a contract image`);
+  }
+  if (spec.readyPattern !== undefined && spec.readyPattern !== CONTRACT_READY_PATTERN) {
+    issue(["readyPattern"], `A contract image signals readiness with ${CONTRACT_READY_PATTERN}`);
+  }
+
+  spec.volumes.forEach((v, i) => {
+    if (v.primary) {
+      if (v.path !== CONTRACT_DATA_PATH) {
+        issue(["volumes", i, "path"], `The primary volume of a contract image is ${CONTRACT_DATA_PATH}`);
+      }
+    } else if (v.path !== CONTRACT_SERVER_PATH) {
+      issue(["volumes", i, "path"], `A contract image has ${CONTRACT_DATA_PATH} and ${CONTRACT_SERVER_PATH} only`);
+    } else if (v.backup !== false) {
+      issue(["volumes", i, "backup"], `${CONTRACT_SERVER_PATH} holds re-downloadable game files: backup false`);
+    }
+  });
+
+  for (const key of Object.keys(spec.env)) {
+    if (key.startsWith("DK_") && !CONTRACT_ENV_ALLOWED.includes(key)) {
+      issue(["env", key], `DeployKit sets the DK_* inputs of a contract image; only ${CONTRACT_ENV_ALLOWED.join(", ")} goes in env`);
+    }
+  }
+  spec.ports.forEach((p, i) => {
+    if (p.env !== undefined) {
+      issue(["ports", i, "env"], `A contract image reads ${contractPortEnv(p.name)}: no env`);
+    }
+  });
+
+  spec.mods?.sources.forEach((s, i) => {
+    const expected: { env: string; enabledEnv?: string; apiKeyEnv?: string } =
+      CONTRACT_MOD_ENV[s.source];
+    for (const field of ["env", "enabledEnv", "apiKeyEnv"] as const) {
+      if (s[field] !== expected[field]) {
+        issue(
+          ["mods", "sources", i, field],
+          expected[field]
+            ? `A contract image reads ${s.source} from ${expected[field]}`
+            : `Not used by a contract image`,
+        );
+      }
+    }
+  });
+  spec.mods?.modpacks.forEach((p, i) => {
+    for (const key of Object.keys(p.env)) {
+      if (!CONTRACT_MODPACK_ENV.includes(key)) {
+        issue(["mods", "modpacks", i, "env", key], `A contract image reads ${CONTRACT_MODPACK_ENV.join(", ")}`);
+      }
+    }
+    if (p.env.DK_MODPACK_SOURCE !== p.source) {
+      issue(["mods", "modpacks", i, "env", "DK_MODPACK_SOURCE"], `Must be "${p.source}"`);
+    }
+  });
+}
 
 /** What the catalogue publishes at `games/index.json`. */
 const gameIndexSchema = z.array(gameMetaSchema);
@@ -603,6 +725,14 @@ export {
   GAME_SLUG_REGEX,
   BUILTIN_VARIABLES,
   PORT_VARIABLE_PREFIX,
+  GAME_CONTRACT_VERSION,
+  CONTRACT_READY_PATTERN,
+  CONTRACT_DATA_PATH,
+  CONTRACT_SERVER_PATH,
+  CONTRACT_STOP_MARGIN_SEC,
+  CONTRACT_MOD_ENV,
+  contractVarEnv,
+  contractPortEnv,
   gameMetaSchema,
   gamePortSchema,
   gameVariableSchema,

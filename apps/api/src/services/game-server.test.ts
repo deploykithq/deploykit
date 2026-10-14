@@ -154,3 +154,69 @@ describe("buildContainerSpec", () => {
     );
   });
 });
+
+describe("buildContainerSpec for a contract image", () => {
+  const contract = gameSpecSchema.parse({
+    id: "valheim",
+    name: "Valheim",
+    version: "2",
+    description: "Viking survival.",
+    contract: 1,
+    image: "ghcr.io/deploykithq/game-valheim:0.1",
+    ports: [
+      { name: "game", protocol: "udp", container: 2456, matchHost: true },
+      { name: "query", protocol: "udp", container: 2457, matchHost: true, offsetOf: "game", offset: 1 },
+    ],
+    variables: [
+      { key: "world_name", label: "World", type: "string", default: "Dedicated" },
+      { key: "server_pass", label: "Password", type: "string", secret: true },
+      { key: "seed", label: "Seed", type: "string" },
+    ],
+    env: { DK_GAME_VERSION: "public" },
+    volumes: [
+      { name: "data", path: "/data", primary: true },
+      { name: "server", path: "/server", browsable: false, backup: false },
+    ],
+    console: { method: "stdin" },
+    stop: { timeoutSec: 120 },
+  });
+  const opts = buildContainerSpec(
+    { ...row, spec: contract },
+    { world_name: "Midgard", server_pass: "s3cret" },
+    ports,
+    { DK_MODS_STEAM: "" },
+  );
+
+  it("passes every variable as DK_VAR_<KEY>, a blank one as empty", () => {
+    expect(opts.env).toEqual(
+      expect.arrayContaining(["DK_VAR_WORLD_NAME=Midgard", "DK_VAR_SERVER_PASS=s3cret", "DK_VAR_SEED="]),
+    );
+  });
+
+  it("tells the image which port to listen on, and who it is", () => {
+    expect(opts.env).toEqual(
+      expect.arrayContaining([
+        "DK_PORT_GAME=3000",
+        "DK_PORT_QUERY=3001",
+        "DK_SERVER_NAME=vikings",
+        "DK_MEMORY_MB=4000",
+        "DK_HEAP_MB=3000",
+        "DK_GAME_VERSION=public",
+        "DK_MODS_STEAM=",
+      ]),
+    );
+  });
+
+  it("gives the image a stop timeout Docker outlasts", () => {
+    expect(opts.stopTimeout).toBe(120);
+    expect(opts.env).toContain("DK_STOP_TIMEOUT=110");
+    expect(opts).not.toHaveProperty("stopSignal");
+    expect(opts.openStdin).toBe(true);
+    expect(opts).not.toHaveProperty("command");
+  });
+
+  it("injects nothing into a third-party image", () => {
+    const plain = buildContainerSpec(row, { tag: "latest", server_pass: "s3cret" }, ports);
+    expect(plain.env.some((e: string) => e.startsWith("DK_"))).toBe(false);
+  });
+});

@@ -8,7 +8,8 @@ import { VARIABLE_NAME_REGEX } from "../templates/template.schema";
  *
  * A game declares where its mods come from and which env vars its image reads
  * them from; DeployKit keeps the list and renders it into those vars at
- * provisioning. The image (itzg, tModLoader…) does the downloading.
+ * provisioning. The image does the downloading; a contract image reads the
+ * `DK_MODS_*` vars (`CONTRACT_MOD_ENV`).
  */
 
 const MOD_SOURCES = ["modrinth", "curseforge", "steam-workshop"] as const;
