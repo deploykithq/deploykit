@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/deploykithq/deploykit/compare/v0.6.0...v0.7.0) (2026-10-14)
+
+
+### Features
+
+* support the DeployKit game image contract ([#25](https://github.com/deploykithq/deploykit/issues/25)) ([a034521](https://github.com/deploykithq/deploykit/commit/a03452131ba19c3082fe6f9efb7e21a520bd28d7))
+
 ## [0.6.0](https://github.com/deploykithq/deploykit/compare/v0.5.0...v0.6.0) (2026-10-13)
 
 
