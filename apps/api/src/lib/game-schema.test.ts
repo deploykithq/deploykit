@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 
 import {
   addGameModSchema,
+  createGameServerSchema,
   gameSpecSchema,
   MODPACK_VARIABLES,
   validateGameValues,
@@ -433,5 +434,20 @@ describe("gameSpecSchema contract", () => {
     const errors = errorsOf({ ...CONTRACT, mods: { ...CONTRACT.mods, modpacks } }).join();
     expect(errors).toMatch(/DK_MODPACK_PROJECT/);
     expect(errors).toMatch(/Must be "modrinth"/);
+  });
+});
+
+describe("createGameServerSchema", () => {
+  const input = {
+    projectId: "00000000-0000-4000-8000-000000000000",
+    name: "mc",
+    gameId: "minecraft",
+    memoryMb: 2048,
+  };
+
+  // Older clients (and the API itself) keep starting the server on creation.
+  it("starts the server unless told otherwise", () => {
+    expect(createGameServerSchema.parse(input).start).toBe(true);
+    expect(createGameServerSchema.parse({ ...input, start: false }).start).toBe(false);
   });
 });

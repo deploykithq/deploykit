@@ -111,6 +111,8 @@ interface GameCatalogPickerPropsI {
 
 interface GeneratedSecretsViewPropsI {
   secrets: Record<string, string>;
+  /** false when the server was created without starting it. */
+  started: boolean;
   onContinue: () => void;
 }
 

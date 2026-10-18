@@ -14,6 +14,7 @@ import type {
 interface CreatedServerI {
   id: string;
   generatedSecrets: Record<string, string>;
+  started: boolean;
 }
 
 /**
@@ -30,6 +31,8 @@ export const useNewGameServer = (projectId: string, onClose: () => void) => {
   const [nameError, setNameError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreatedServerI | null>(null);
   const [modpack, setModpack] = useState<ModpackChoiceI | null>(null);
+  // null until the user touches the checkbox: then it follows the game.
+  const [startChoice, setStartChoice] = useState<boolean | null>(null);
 
   const specQuery = trpc.gameServer.catalog.byId.useQuery(
     { id: game?.id ?? "" },
@@ -38,6 +41,10 @@ export const useNewGameServer = (projectId: string, onClose: () => void) => {
   const spec = specQuery.data;
 
   const form = useGameForm({ spec, mode: "create" });
+
+  // A game with mods is created idle by default: the first start generates
+  // the world, and world-generation mods only affect a new one.
+  const startNow = startChoice ?? !spec?.mods;
 
   const goToServer = (id: string) => {
     close();
@@ -51,7 +58,11 @@ export const useNewGameServer = (projectId: string, onClose: () => void) => {
     onSuccess: (result) => {
       utils.project.byId.invalidate({ id: projectId });
       if (Object.keys(result.generatedSecrets ?? {}).length > 0) {
-        setCreated({ id: result.id, generatedSecrets: result.generatedSecrets });
+        setCreated({
+          id: result.id,
+          generatedSecrets: result.generatedSecrets,
+          started: result.status !== "idle",
+        });
       } else {
         goToServer(result.id);
       }
@@ -64,6 +75,7 @@ export const useNewGameServer = (projectId: string, onClose: () => void) => {
     setNameError(null);
     setCreated(null);
     setModpack(null);
+    setStartChoice(null);
     createMutation.reset();
     onClose();
   };
@@ -71,6 +83,7 @@ export const useNewGameServer = (projectId: string, onClose: () => void) => {
   const selectGame = (entry: GameCatalogEntryT) => {
     setGame(entry);
     setModpack(null);
+    setStartChoice(null);
     if (!name) setName(entry.id.slice(0, 41));
     createMutation.reset();
   };
@@ -102,6 +115,7 @@ export const useNewGameServer = (projectId: string, onClose: () => void) => {
       values: payload.values,
       ports: payload.ports,
       memoryMb: payload.memoryMb,
+      start: startNow,
       ...(modpack
         ? { modpack: { source: modpack.source, ref: modpack.ref, versionId: modpack.versionId } }
         : {}),
@@ -125,6 +139,8 @@ export const useNewGameServer = (projectId: string, onClose: () => void) => {
           (k): k is string => Boolean(k),
         )
       : [],
+    startNow,
+    setStartNow: setStartChoice,
     created,
     creating: createMutation.isPending,
     createError: createMutation.error?.message ?? null,

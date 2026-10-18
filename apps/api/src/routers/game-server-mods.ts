@@ -201,6 +201,8 @@ export const gameServerModsRouter = router({
         followsLatest,
         onDisk,
         ...pending,
+        // Never provisioned: pending changes install on the first start.
+        built: Boolean(row.containerId),
         filter,
         unsupported,
         canEdit: canOperate(role) && ctx.user.role !== "viewer",

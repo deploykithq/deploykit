@@ -30,6 +30,8 @@ export const NewGameServerModal: React.FC<NewGameServerModalPropsI> = memo(
       modpack,
       setModpack,
       modpackHides,
+      startNow,
+      setStartNow,
       created,
       creating,
       createError,
@@ -51,6 +53,7 @@ export const NewGameServerModal: React.FC<NewGameServerModalPropsI> = memo(
         {created ? (
           <GeneratedSecretsView
             secrets={created.generatedSecrets}
+            started={created.started}
             onContinue={() => goToServer(created.id)}
           />
         ) : !game ? (
@@ -138,6 +141,23 @@ export const NewGameServerModal: React.FC<NewGameServerModalPropsI> = memo(
               )}
             </section>
 
+            <section className="space-y-1">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={startNow}
+                  onChange={(e) => setStartNow(e.target.checked)}
+                />
+                Start the server now
+              </label>
+              {spec.mods && (
+                <p className="text-[11px] text-text-muted">
+                  Leave it off to add mods first: the world is generated on the
+                  first start, and world-generation mods only affect a new world.
+                </p>
+              )}
+            </section>
+
             {createError && (
               <p role="alert" className="text-xs text-danger whitespace-pre-wrap">
                 {createError}
@@ -149,7 +169,7 @@ export const NewGameServerModal: React.FC<NewGameServerModalPropsI> = memo(
                 Cancel
               </Button>
               <Button type="submit" disabled={creating || !name.trim()}>
-                {creating ? "Creating…" : "Create game server"}
+                {creating ? "Creating…" : startNow ? "Create and start" : "Create game server"}
               </Button>
             </div>
           </form>
