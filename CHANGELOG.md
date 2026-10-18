@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/deploykithq/deploykit/compare/v0.7.0...v0.7.1) (2026-10-18)
+
+
+### Bug Fixes
+
+* allow creating a server without starting it World-generation mods (Minecraft, Terraria) only affect a new world, but creating a game server provisioned it right away, so the world was generated before any mod could be added. ([#27](https://github.com/deploykithq/deploykit/issues/27)) ([1cd6d33](https://github.com/deploykithq/deploykit/commit/1cd6d33083eba9174b0dfb60050177aa3e50a3be))
+
 ## [0.7.0](https://github.com/deploykithq/deploykit/compare/v0.6.0...v0.7.0) (2026-10-14)
 
 
