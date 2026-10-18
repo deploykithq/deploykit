@@ -337,10 +337,12 @@ const assertLocal = async (serverId: string | null | undefined) => {
 };
 
 /**
- * Create a game server and start it.
+ * Create a game server and, unless `start` is false, start it.
  *
  * The container is provisioned in the background (see provisionInBackground);
- * if that fails the row is kept in `error` so Start can retry.
+ * if that fails the row is kept in `error` so Start can retry. Without
+ * `start` the row stays `idle` with no container, so mods can be added before
+ * the first start generates the world.
  *
  * @returns the row and the secrets that were generated (shown to the user once).
  */
@@ -422,7 +424,7 @@ const createGameServer = async (input: CreateGameServerInputT) => {
           memoryMb: input.memoryMb,
           cpuMillicores: input.cpuMillicores ?? null,
           modpack,
-          status: "provisioning",
+          status: input.start ? "provisioning" : "idle",
         })
         .returning();
       await tx.insert(gameServerPorts).values(
@@ -444,7 +446,7 @@ const createGameServer = async (input: CreateGameServerInputT) => {
     throw err;
   }
 
-  provisionInBackground(row);
+  if (input.start) provisionInBackground(row);
 
   return {
     row,

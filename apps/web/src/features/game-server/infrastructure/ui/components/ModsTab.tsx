@@ -31,7 +31,18 @@ export const ModsTab: React.FC<GameServerTabPropsI> = memo(function ModsTab({ se
 
   return (
     <div className="space-y-4">
-      {data.pending && (
+      {data.pending && !data.built && (
+        <Card className="border-accent/40">
+          <div className="flex items-start gap-3">
+            <Puzzle className="w-4 h-4 text-accent shrink-0 mt-0.5" />
+            <p className="text-sm">
+              The server has not started yet. These mods are installed on its first start, before
+              its world is generated.
+            </p>
+          </div>
+        </Card>
+      )}
+      {data.pending && data.built && (
         <Card className="border-warning/40">
           <div className="flex flex-wrap items-center gap-3">
             <AlertTriangle className="w-4 h-4 text-warning shrink-0" />

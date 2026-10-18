@@ -54,7 +54,9 @@ export const GeneralTab: React.FC<GameServerTabPropsI> = memo(function GeneralTa
                 ? "Restoring a world backup. The server starts again when it finishes."
                 : server.status === "running"
                   ? "The server is up."
-                  : "The server is not running."}
+                  : server.status === "idle"
+                    ? "Not started yet. Add mods and adjust settings first: the world is created on the first start."
+                    : "The server is not running."}
           </p>
         )}
       </Card>

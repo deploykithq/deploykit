@@ -161,7 +161,7 @@ export const gameServerRouter = router({
       resourceType: "game_server",
       resourceId: row.id,
       resourceName: row.name,
-      metadata: { gameId: row.gameId, projectId: row.projectId },
+      metadata: { gameId: row.gameId, projectId: row.projectId, start: input.start },
     });
 
     return { id: row.id, name: row.name, status: row.status, generatedSecrets };

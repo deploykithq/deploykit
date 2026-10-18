@@ -10,7 +10,7 @@ import type { GeneratedSecretsViewPropsI } from "@game-server/infrastructure/ui/
  * a template's generated credentials.
  */
 export const GeneratedSecretsView: React.FC<GeneratedSecretsViewPropsI> = memo(
-  function GeneratedSecretsView({ secrets, onContinue }) {
+  function GeneratedSecretsView({ secrets, started, onContinue }) {
     const [revealed, setRevealed] = useState(false);
     const entries = Object.entries(secrets);
 
@@ -19,7 +19,9 @@ export const GeneratedSecretsView: React.FC<GeneratedSecretsViewPropsI> = memo(
         <div className="flex items-center gap-2 text-success">
           <CheckCircle2 className="w-5 h-5" />
           <span className="text-sm font-medium">
-            Game server created — provisioning…
+            {started
+              ? "Game server created — provisioning…"
+              : "Game server created — not started yet"}
           </span>
         </div>
 

@@ -573,6 +573,11 @@ const createGameServerSchema = z.object({
   serverId: z.string().uuid().nullable().optional(),
   /** Start from a modpack instead of the plain game (games with mods.modpacks). */
   modpack: gameModpackRefSchema.optional(),
+  /**
+   * false leaves the server idle, with no container: mods added before the
+   * first start are there when the world is generated.
+   */
+  start: z.boolean().default(true),
 });
 
 const updateGameServerSchema = z.object({
