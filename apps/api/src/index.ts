@@ -260,14 +260,15 @@ async function main() {
       const signature = req.headers["x-hub-signature-256"] as
         | string
         | undefined;
-      const authorized =
-        rawBody !== undefined &&
-        (await webhookService.verifyGitHubSignature(
-          rawBody,
-          signature,
-          req.headers as Record<string, string>,
-        ));
-      if (!authorized) {
+      const delivery =
+        rawBody === undefined
+          ? { ok: false, appRowId: null }
+          : await webhookService.verifyGitHubDelivery(
+              rawBody,
+              signature,
+              req.headers as Record<string, string>,
+            );
+      if (!delivery.ok) {
         reply.status(401).send({ error: "Invalid webhook signature" });
         return;
       }
@@ -275,6 +276,7 @@ async function main() {
       const result = await webhookService.handleGitHub(
         req.body,
         req.headers as Record<string, string>,
+        delivery.appRowId,
       );
       server.log.info(`[webhook/github] ${result.message}`);
       reply.send(result);

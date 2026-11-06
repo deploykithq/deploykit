@@ -38,21 +38,52 @@ interface GhRepoI {
  */
 const inFlightTokens = new Map<string, Promise<string>>();
 
-let appCache: { row: GithubAppT | null; at: number } | null = null;
+let appCache: { rows: GithubAppT[]; at: number } | null = null;
 
-/** The registered GitHub App, or null when the instance has none. */
-const getGitHubApp = async (): Promise<GithubAppT | null> => {
+/**
+ * Every registered GitHub App, oldest first.
+ *
+ * An instance can own several: a private App can only be installed on the
+ * account that owns it, so reaching both a personal account and an
+ * organization means registering one App on each.
+ */
+const listGitHubApps = async (): Promise<GithubAppT[]> => {
   if (appCache && Date.now() - appCache.at < APP_CACHE_TTL_MS) {
-    return appCache.row;
+    return appCache.rows;
   }
-  const row = (await db.query.githubApps.findFirst()) ?? null;
-  appCache = { row, at: Date.now() };
-  return row;
+  const rows = await db.query.githubApps.findMany({
+    orderBy: (a, { asc }) => [asc(a.createdAt)],
+  });
+  appCache = { rows, at: Date.now() };
+  return rows;
 };
 
-/** Drop the cached App row — call after any write to `github_apps`. */
+/** One App by its local uuid, or null. */
+const getGitHubAppById = async (id: string): Promise<GithubAppT | null> =>
+  (await listGitHubApps()).find((a) => a.id === id) ?? null;
+
+/** One App by GitHub's numeric App id, or null. */
+const getGitHubAppByAppId = async (
+  appId: number,
+): Promise<GithubAppT | null> =>
+  (await listGitHubApps()).find((a) => a.appId === appId) ?? null;
+
+/** Drop the cached App rows — call after any write to `github_apps`. */
 const invalidateGitHubApp = (): void => {
   appCache = null;
+};
+
+/** The App an installation belongs to: its key mints that installation's tokens. */
+const appForInstallation = async (
+  installation: GithubInstallationT,
+): Promise<GithubAppT> => {
+  const app = await getGitHubAppById(installation.githubAppId);
+  if (!app) {
+    throw new Error(
+      `The GitHub App that "${installation.accountLogin}" was installed through is no longer configured.`,
+    );
+  }
+  return app;
 };
 
 /** Sign a short-lived App JWT. Authenticates us as the App, not as a user. */
@@ -121,9 +152,7 @@ const loadInstallationToken = async (
     }
   }
 
-  const app = await getGitHubApp();
-  if (!app) throw new Error("No GitHub App is configured on this instance.");
-  return mintInstallationToken(app, installation);
+  return mintInstallationToken(await appForInstallation(installation), installation);
 };
 
 /**
@@ -177,8 +206,8 @@ const asInstallation = async <T>(
   path: string,
   opts: Parameters<typeof ghRequest>[1] = {},
 ): Promise<T> => {
-  const app = await getGitHubApp();
-  const baseUrl = opts.baseUrl ?? app?.apiBaseUrl;
+  const app = await appForInstallation(installation);
+  const baseUrl = opts.baseUrl ?? app.apiBaseUrl;
   try {
     const { data } = await ghRequest<T>(path, {
       ...opts,
@@ -222,11 +251,11 @@ const listInstallationRepositories = async (
   const cached = await redis.get(cacheKey);
   if (cached) return JSON.parse(cached);
 
-  const app = await getGitHubApp();
+  const app = await appForInstallation(installation);
   const { items, truncated } = await ghPaginate<GhRepoI>(
     "/installation/repositories?per_page=100",
     {
-      baseUrl: app?.apiBaseUrl,
+      baseUrl: app.apiBaseUrl,
       auth: await installationAuth(installation),
     },
     (page) => (page?.repositories ?? []).map(toRepo),
@@ -283,11 +312,11 @@ const listRepositoryBranches = async (
   installation: GithubInstallationT,
   fullName: string,
 ): Promise<string[]> => {
-  const app = await getGitHubApp();
+  const app = await appForInstallation(installation);
   const { items } = await ghPaginate<string>(
     `/repos/${fullName}/branches?per_page=100`,
     {
-      baseUrl: app?.apiBaseUrl,
+      baseUrl: app.apiBaseUrl,
       auth: await installationAuth(installation),
     },
     (page) => (page ?? []).map((b: any) => b.name as string),
@@ -313,8 +342,11 @@ const getInstallationByGithubId = async (
   })) ?? null;
 
 export {
-  getGitHubApp,
+  listGitHubApps,
+  getGitHubAppById,
+  getGitHubAppByAppId,
   invalidateGitHubApp,
+  appForInstallation,
   signAppJwt,
   appAuth,
   getInstallationToken,

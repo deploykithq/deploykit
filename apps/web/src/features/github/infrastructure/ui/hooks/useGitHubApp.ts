@@ -3,7 +3,10 @@ import { useState } from "react";
 import { trpc } from "@lib/trpc";
 
 /**
- * Registration and management of the instance's GitHub App.
+ * Registration and management of the instance's GitHub Apps.
+ *
+ * An instance can own several: a private App only installs on the account
+ * that owns it, so a personal account and each organization get their own.
  *
  * The manifest exchange is a browser form POST, not a fetch: GitHub only
  * accepts the manifest as a form field, and it answers with a redirect.
@@ -84,6 +87,7 @@ export const useGitHubApp = () => {
 
   return {
     status: status.data,
+    apps: status.data?.apps ?? [],
     loading: status.isLoading,
     organization,
     setOrganization,

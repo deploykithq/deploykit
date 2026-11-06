@@ -107,16 +107,27 @@ const assertWebhookReachable = (urls: ManifestUrlsI): void => {
  * Nothing asks for `checks` (commit statuses are enough and cost one call),
  * `deployments`, `administration`, `workflows` or `issues`.
  *
+ * The App stays private (`public: false`), so it can only be installed on the
+ * account that owns it. An instance that deploys from a personal account and
+ * an organization registers one App on each, rather than opening a public App
+ * that any stranger could install.
+ *
  * Only `push` and `pull_request` are subscribed. The `installation` and
  * `installation_repositories` events this integration also handles are
  * delivered to every App automatically and cannot be subscribed to, so naming
  * them here would at best be noise and at worst rejected.
  */
-const buildManifest = (urls: ManifestUrlsI, name?: string): AppManifestI => {
+const buildManifest = (
+  urls: ManifestUrlsI,
+  name?: string,
+  organization?: string,
+): AppManifestI => {
   const host = new URL(urls.baseUrl).hostname;
+  const org = organization?.trim();
   return {
-    // App names are globally unique on GitHub, so the host disambiguates.
-    name: name?.trim() || `DeployKit - ${host}`,
+    // App names are globally unique on GitHub, so the host disambiguates — and
+    // the organization too, since one instance registers an App per account.
+    name: name?.trim() || `DeployKit - ${host}${org ? ` (${org})` : ""}`,
     url: urls.baseUrl,
     hook_attributes: { url: urls.webhookUrl, active: true },
     redirect_url: urls.redirectUrl,

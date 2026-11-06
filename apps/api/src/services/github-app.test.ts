@@ -16,6 +16,13 @@ const { publicKey, privateKey } = generateKeyPairSync("rsa", {
   privateKeyEncoding: { type: "pkcs8", format: "pem" },
 });
 
+/** A second App, owned by another account, with a key of its own. */
+const orgKeys = generateKeyPairSync("rsa", {
+  modulusLength: 2048,
+  publicKeyEncoding: { type: "spki", format: "pem" },
+  privateKeyEncoding: { type: "pkcs8", format: "pem" },
+});
+
 const APP_ROW = {
   id: "app-uuid",
   appId: 123456,
@@ -25,6 +32,22 @@ const APP_ROW = {
   webhookSecret: "encrypted-secret",
   apiBaseUrl: "https://api.github.com",
   webBaseUrl: "https://github.com",
+} as any;
+
+const ORG_APP_ROW = {
+  ...APP_ROW,
+  id: "org-app-uuid",
+  appId: 654321,
+  slug: "deploykit-acme-inc",
+  privateKey: "encrypted-org-pem",
+} as any;
+
+const ORG_INSTALLATION = {
+  id: "org-inst-uuid",
+  githubAppId: "org-app-uuid",
+  installationId: 77,
+  accountLogin: "acme-inc",
+  suspendedAt: null,
 } as any;
 
 const INSTALLATION = {
@@ -55,12 +78,16 @@ vi.mock("../lib/encryption", () => ({
   // value round-trips through encrypt/decrypt rather than being stored raw.
   encrypt: (s: string) => `enc(${s})`,
   decrypt: (s: string) =>
-    s === "encrypted-pem" ? privateKey : s.replace(/^enc\((.*)\)$/, "$1"),
+    s === "encrypted-pem"
+      ? privateKey
+      : s === "encrypted-org-pem"
+        ? orgKeys.privateKey
+        : s.replace(/^enc\((.*)\)$/, "$1"),
 }));
 vi.mock("../db/index", () => ({
   db: {
     query: {
-      githubApps: { findFirst: async () => APP_ROW },
+      githubApps: { findMany: async () => [APP_ROW, ORG_APP_ROW] },
       githubInstallations: { findFirst: async () => INSTALLATION },
     },
   },
@@ -192,6 +219,51 @@ describe("getInstallationToken", () => {
       }),
     ).rejects.toThrow(/suspended/i);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("with several Apps", () => {
+  it("mints each installation's token with its own App's key", async () => {
+    const issuers: string[] = [];
+    fetchMock.mockImplementation(async (url: string, init: RequestInit) => {
+      const auth = new Headers(init.headers).get("authorization") ?? "";
+      const token = auth.replace(/^Bearer /, "");
+      const key = url.includes("/installations/77/")
+        ? orgKeys.publicKey
+        : publicKey;
+      // Throws if the JWT was signed with the other App's key.
+      const claims = jwt.verify(token, key, {
+        algorithms: ["RS256"],
+      }) as jwt.JwtPayload;
+      issuers.push(String(claims.iss));
+      return tokenResponse(`ghs_${claims.iss}`);
+    });
+
+    expect(await service.getInstallationToken(INSTALLATION)).toBe(
+      "ghs_123456",
+    );
+    expect(await service.getInstallationToken(ORG_INSTALLATION)).toBe(
+      "ghs_654321",
+    );
+    expect(issuers).toEqual(["123456", "654321"]);
+  });
+
+  it("fails readably when an installation's App is gone", async () => {
+    await expect(
+      service.getInstallationToken({
+        ...INSTALLATION,
+        githubAppId: "deleted-app",
+      }),
+    ).rejects.toThrow(/no longer configured/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("looks Apps up by local id and by GitHub id", async () => {
+    expect((await service.getGitHubAppById("org-app-uuid"))?.appId).toBe(
+      654321,
+    );
+    expect((await service.getGitHubAppByAppId(123456))?.id).toBe("app-uuid");
+    expect(await service.getGitHubAppById("nope")).toBeNull();
   });
 });
 

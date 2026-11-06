@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { createPrivateKey } from "crypto";
 
@@ -13,7 +13,9 @@ import { logAction } from "../lib/audit/audit";
 import { getProjectRole, canOperate } from "../lib/permissions";
 
 import {
-  getGitHubApp,
+  listGitHubApps,
+  getGitHubAppById,
+  getGitHubAppByAppId,
   invalidateGitHubApp,
   appAuth,
   getInstallationById,
@@ -71,17 +73,24 @@ const toPublicInstallation = (row: GithubInstallationT) => ({
   settingsUrl: `https://github.com/settings/installations/${row.installationId}`,
 });
 
-/** Load the App or fail with a message that says what to do about it. */
-const requireApp = async (): Promise<GithubAppT> => {
-  const app = await getGitHubApp();
+type PublicAppWithInstallationsT = ReturnType<typeof toPublicApp> & {
+  installUrl: string;
+  installations: ReturnType<typeof toPublicInstallation>[];
+};
+
+/** Load one App by its local id, or fail with NOT_FOUND. */
+const requireAppById = async (id: string): Promise<GithubAppT> => {
+  const app = await getGitHubAppById(id);
   if (!app) {
     throw new TRPCError({
-      code: "PRECONDITION_FAILED",
-      message: "No GitHub App is configured. Register one in Settings first.",
+      code: "NOT_FOUND",
+      message: "GitHub App not found",
     });
   }
   return app;
 };
+
+const appIdInput = z.object({ appId: z.string().uuid() });
 
 /** Upsert one installation from GitHub's representation of it. */
 const upsertInstallation = async (
@@ -150,7 +159,7 @@ const requireInstallation = async (
 
 export const githubRouter = router({
   /**
-   * Whether the instance has an App, for the forms that offer a repo picker.
+   * Whether the instance has any App, for the forms that offer a repo picker.
    *
    * Every signed-in caller learns only that one exists — which is all the
    * application forms need. The App's identity and the accounts it is
@@ -159,26 +168,29 @@ export const githubRouter = router({
    * `listInstallations`, which is scoped to a project.
    */
   status: protectedProcedure.query(async ({ ctx }) => {
-    const app = await getGitHubApp();
-    const empty = {
-      app: null,
-      installUrl: null,
-      installations: [] as ReturnType<typeof toPublicInstallation>[],
-    };
+    const apps = await listGitHubApps();
+    const configured = apps.length > 0;
+    const empty: PublicAppWithInstallationsT[] = [];
+    if (!configured || ctx.user.role !== "admin") {
+      return { configured, apps: empty };
+    }
 
-    if (!app) return { configured: false, ...empty };
-    if (ctx.user.role !== "admin") return { configured: true, ...empty };
-
-    const installations = await ctx.db.query.githubInstallations.findMany({
-      where: eq(githubInstallations.githubAppId, app.id),
-      orderBy: (i: any, { asc }: any) => [asc(i.accountLogin)],
-    });
+    const installations: GithubInstallationT[] =
+      await ctx.db.query.githubInstallations.findMany({
+        orderBy: (i: any, { asc }: any) => [asc(i.accountLogin)],
+      });
 
     return {
-      configured: true,
-      app: toPublicApp(app),
-      installUrl: installUrl(app.webBaseUrl, app.slug),
-      installations: installations.map(toPublicInstallation),
+      configured,
+      apps: apps.map(
+        (app): PublicAppWithInstallationsT => ({
+          ...toPublicApp(app),
+          installUrl: installUrl(app.webBaseUrl, app.slug),
+          installations: installations
+            .filter((i) => i.githubAppId === app.id)
+            .map(toPublicInstallation),
+        }),
+      ),
     };
   }),
 
@@ -191,15 +203,8 @@ export const githubRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const existing = await getGitHubApp();
-      if (existing) {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message:
-            "A GitHub App is already configured. Disconnect it before registering another.",
-        });
-      }
-
+      // Several Apps may coexist: a private App installs only on its owner,
+      // so each account or organization gets its own.
       let urls;
       try {
         urls = manifestUrls();
@@ -214,7 +219,9 @@ export const githubRouter = router({
       const state = await issueManifestState(ctx.user.id);
       return {
         postUrl: manifestPostUrl(state, input.organization),
-        manifest: JSON.stringify(buildManifest(urls, input.name)),
+        manifest: JSON.stringify(
+          buildManifest(urls, input.name, input.organization),
+        ),
         webhookUrl: urls.webhookUrl,
         redirectUrl: urls.redirectUrl,
       };
@@ -291,12 +298,10 @@ export const githubRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const existing = await getGitHubApp();
-      if (existing) {
+      if (await getGitHubAppByAppId(input.appId)) {
         throw new TRPCError({
           code: "CONFLICT",
-          message:
-            "A GitHub App is already configured. Disconnect it before connecting another.",
+          message: "That GitHub App is already connected.",
         });
       }
 
@@ -366,8 +371,8 @@ export const githubRouter = router({
     }),
 
   /** Confirm the stored credentials still work, and show what they grant. */
-  test: adminProcedure.mutation(async () => {
-    const app = await requireApp();
+  test: adminProcedure.input(appIdInput).mutation(async ({ input }) => {
+    const app = await requireAppById(input.appId);
     try {
       const { data } = await ghRequest<any>("/app", {
         auth: appAuth(app),
@@ -387,28 +392,46 @@ export const githubRouter = router({
   /**
    * Record one installation, given the id GitHub redirected back with.
    *
-   * A forged id is harmless: the App JWT only authenticates us as our own App,
-   * so GitHub answers 404 for any installation that is not ours.
+   * GitHub's redirect does not say which App was installed, so each of ours is
+   * asked in turn and the one that owns it wins. A forged id is harmless: an
+   * App JWT only authenticates us as our own App, so GitHub answers 404 for any
+   * installation that is not ours.
    */
   syncInstallation: adminProcedure
     .input(z.object({ installationId: z.number().int().positive() }))
     .mutation(async ({ ctx, input }) => {
-      const app = await requireApp();
-      try {
-        const { data } = await ghRequest<any>(
-          `/app/installations/${input.installationId}`,
-          { auth: appAuth(app), baseUrl: app.apiBaseUrl },
-        );
-        const row = await upsertInstallation(ctx, app.id, data);
-        return toPublicInstallation(row);
-      } catch (err) {
-        throw asTrpcError(err, "Could not read that installation");
+      const apps = await listGitHubApps();
+      if (apps.length === 0) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "No GitHub App is configured. Register one in Settings first.",
+        });
       }
+
+      let lastError: unknown = null;
+      for (const app of apps) {
+        try {
+          const { data } = await ghRequest<any>(
+            `/app/installations/${input.installationId}`,
+            { auth: appAuth(app), baseUrl: app.apiBaseUrl },
+          );
+          const row = await upsertInstallation(ctx, app.id, data);
+          return toPublicInstallation(row);
+        } catch (err) {
+          lastError = err;
+          // Not this App's installation: ask the next one.
+          if (err instanceof GitHubApiError && err.status === 404) continue;
+          throw asTrpcError(err, "Could not read that installation");
+        }
+      }
+      throw asTrpcError(lastError, "Could not read that installation");
     }),
 
   /** Reconcile every installation, for when a webhook was missed. */
-  syncInstallations: adminProcedure.mutation(async ({ ctx }) => {
-    const app = await requireApp();
+  syncInstallations: adminProcedure
+    .input(appIdInput)
+    .mutation(async ({ ctx, input }) => {
+    const app = await requireAppById(input.appId);
     let installations: any[];
     try {
       const { data } = await ghRequest<any[]>(
@@ -449,19 +472,31 @@ export const githubRouter = router({
     });
 
     return { found: seen.length, removed };
-  }),
+    }),
 
-  /** Forget the App. Requires confirmation once applications are affected. */
+  /** Forget one App. Requires confirmation once applications are affected. */
   disconnect: adminProcedure
-    .input(z.object({ confirm: z.boolean().default(false) }))
+    .input(appIdInput.extend({ confirm: z.boolean().default(false) }))
     .mutation(async ({ ctx, input }) => {
-      const app = await requireApp();
+      const app = await requireAppById(input.appId);
 
-      const linked = await ctx.db.query.applications.findMany({
-        columns: { id: true, name: true },
-        where: (a: any, { isNotNull }: any) =>
-          isNotNull(a.githubInstallationId),
-      });
+      // Only applications deploying through *this* App's installations lose
+      // their credentials; another App's keep working.
+      const installationIds = (
+        await ctx.db.query.githubInstallations.findMany({
+          columns: { id: true },
+          where: eq(githubInstallations.githubAppId, app.id),
+        })
+      ).map((i: { id: string }) => i.id);
+
+      const linked =
+        installationIds.length === 0
+          ? []
+          : await ctx.db.query.applications.findMany({
+              columns: { id: true, name: true },
+              where: (a: any) =>
+                inArray(a.githubInstallationId, installationIds),
+            });
 
       if (linked.length > 0 && !input.confirm) {
         throw new TRPCError({
@@ -487,17 +522,15 @@ export const githubRouter = router({
       return { affectedApplications: linked.length };
     }),
 
-  /** Installations a project operator may pick a repository from. */
+  /** Installations a project operator may pick a repository from, across every App. */
   listInstallations: protectedProcedure
     .input(z.object({ projectId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       await requireProjectOperator(ctx, input.projectId);
 
-      const app = await getGitHubApp();
-      if (!app) return [];
-
+      // Every App's installations: a personal account and an organization
+      // each come through their own App, and the picker offers them together.
       const rows = await ctx.db.query.githubInstallations.findMany({
-        where: eq(githubInstallations.githubAppId, app.id),
         orderBy: (i: any, { asc }: any) => [asc(i.accountLogin)],
       });
       return rows.map(toPublicInstallation);

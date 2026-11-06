@@ -267,7 +267,7 @@ when the command finishes, exactly as remote image builds already behave.
 
 An application reaches a private repository one of **two ways**, and both stay
 supported: a **pasted PAT** (`applications.source_token`, encrypted) or the
-instance's **GitHub App** (`applications.github_installation_id`). The PAT is
+instance's **GitHub Apps** (`applications.github_installation_id`). The PAT is
 what GitLab, Gitea and self-hosted git use; the App is preferred for github.com.
 `services/source-credentials.ts` picks between them at deploy time — it is the
 only place that decides, and `deploy.worker.ts` just asks it.
@@ -279,6 +279,16 @@ only place that decides, and `deploy.worker.ts` just asks it.
   never from the `Host` header** — a forged header would redirect GitHub's
   one-time code elsewhere. `WEB_URL` is therefore load-bearing here, and
   `startManifest` refuses a URL GitHub could not deliver to.
+- **One private App per account, several per instance.** A private App can
+  only be installed on the account that owns it, so deploying from a personal
+  account *and* an organization means registering an App on each — never
+  making one public, which any stranger could install. Nothing is "the" App:
+  `listGitHubApps` / `getGitHubAppById`, and every installation resolves its
+  own App through `appForInstallation` (its key mints that installation's
+  tokens). `verifyGitHubDelivery` reports which App's secret signed a
+  delivery, and an `installation` event is filed under *that* App — one signed
+  only with `WEBHOOK_SECRET` is ignored. The install callback carries no App
+  id, so `syncInstallation` asks each App until one owns it.
 - **Installation tokens expire in an hour**, so they are cached in Redis
   (encrypted, like every other secret) and the in-process promise map in
   `services/github-app.ts` gives single-flight: N concurrent deploys of one

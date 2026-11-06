@@ -114,73 +114,99 @@ export class WebhookService {
   /**
    * Verify an `x-hub-signature-256` over the raw request bytes.
    *
-   * A delivery may be signed either by the registered GitHub App's own webhook
-   * secret or — for repository webhooks configured by hand before the App
-   * existed — by the instance-wide WEBHOOK_SECRET. Every candidate is compared
-   * without short-circuiting and the results OR'd, so a legacy webhook keeps
-   * working after an App is registered. No candidate at all stays fail-closed.
+   * A delivery may be signed either by one of the registered GitHub Apps'
+   * webhook secrets or — for repository webhooks configured by hand before the
+   * App existed — by the instance-wide WEBHOOK_SECRET. Every candidate is
+   * compared without short-circuiting, so a legacy webhook keeps working after
+   * an App is registered. No candidate at all stays fail-closed.
+   *
+   * Also reports *which* App signed (`appRowId`, null for WEBHOOK_SECRET): an
+   * `installation` event is filed under that App, never under one merely named
+   * by a header.
    */
+  async verifyGitHubDelivery(
+    payload: Buffer,
+    signature: string | undefined,
+    headers?: Record<string, string>,
+  ): Promise<{ ok: boolean; appRowId: string | null }> {
+    const denied = { ok: false, appRowId: null };
+    const candidates = await this.githubSignatureSecrets(headers);
+    if (candidates.length === 0) {
+      console.error(
+        "[webhook] No webhook secret configured — rejecting webhook. " +
+          "Register a GitHub App, or set WEBHOOK_SECRET in your environment.",
+      );
+      return denied;
+    }
+    if (!signature) return denied;
+    const given = Buffer.from(signature);
+    let ok = false;
+    let appRowId: string | null = null;
+    for (const candidate of candidates) {
+      const expected = Buffer.from(
+        "sha256=" +
+          createHmac("sha256", candidate.secret).update(payload).digest("hex"),
+      );
+      try {
+        // No early exit: every candidate is compared, so the work done does
+        // not depend on which secret (if any) matched.
+        if (timingSafeEqual(given, expected)) {
+          ok = true;
+          if (candidate.appRowId) appRowId = candidate.appRowId;
+        }
+      } catch {
+        // Length mismatch — a malformed signature header, not a match.
+      }
+    }
+    return { ok, appRowId };
+  }
+
+  /** `verifyGitHubDelivery` for callers that only need a yes or no. */
   async verifyGitHubSignature(
     payload: Buffer,
     signature: string | undefined,
     headers?: Record<string, string>,
   ): Promise<boolean> {
-    const secrets = await this.githubSignatureSecrets(headers);
-    if (secrets.length === 0) {
-      console.error(
-        "[webhook] No webhook secret configured — rejecting webhook. " +
-          "Register a GitHub App, or set WEBHOOK_SECRET in your environment.",
-      );
-      return false;
-    }
-    if (!signature) return false;
-    const given = Buffer.from(signature);
-    let ok = false;
-    for (const secret of secrets) {
-      const expected = Buffer.from(
-        "sha256=" + createHmac("sha256", secret).update(payload).digest("hex"),
-      );
-      try {
-        // No early exit: every candidate is compared, so the work done does
-        // not depend on which secret (if any) matched.
-        if (timingSafeEqual(given, expected)) ok = true;
-      } catch {
-        // Length mismatch — a malformed signature header, not a match.
-      }
-    }
-    return ok;
+    return (await this.verifyGitHubDelivery(payload, signature, headers)).ok;
   }
 
   /** Candidate secrets for a GitHub delivery, in no particular order. */
   private async githubSignatureSecrets(
     headers?: Record<string, string>,
-  ): Promise<string[]> {
-    const secrets: string[] = [];
+  ): Promise<{ secret: string; appRowId: string | null }[]> {
+    const candidates: { secret: string; appRowId: string | null }[] = [];
 
-    // An App delivery names the App it came from. Falling back to whatever App
-    // is registered keeps a delivery working if GitHub ever omits the header;
-    // either way the secret still has to match, so nothing is trusted here.
+    // An App delivery names the App it came from. Without the header every
+    // registered App is a candidate, which keeps a delivery working if GitHub
+    // ever omits it; either way the secret still has to match, so the header
+    // only narrows the search and is never trusted on its own.
     const targetId = Number(headers?.["x-github-hook-installation-target-id"]);
-    const app = Number.isFinite(targetId)
-      ? await db.query.githubApps.findFirst({
+    const named = Number.isFinite(targetId)
+      ? await db.query.githubApps.findMany({
           where: eq(githubApps.appId, targetId),
         })
-      : await db.query.githubApps.findFirst();
+      : [];
+    const apps = named.length > 0 ? named : await db.query.githubApps.findMany();
 
-    if (app) {
+    for (const app of apps) {
       try {
-        secrets.push(decrypt(app.webhookSecret));
+        candidates.push({
+          secret: decrypt(app.webhookSecret),
+          appRowId: app.id,
+        });
       } catch {
         console.error(
-          "[webhook] Could not decrypt the GitHub App webhook secret — " +
+          `[webhook] Could not decrypt the webhook secret of GitHub App ${app.appId} — ` +
             "has ENCRYPTION_KEY changed?",
         );
       }
     }
 
     // Repository webhooks configured by hand before the App existed.
-    if (WEBHOOK_SECRET) secrets.push(WEBHOOK_SECRET);
-    return secrets;
+    if (WEBHOOK_SECRET) {
+      candidates.push({ secret: WEBHOOK_SECRET, appRowId: null });
+    }
+    return candidates;
   }
 
   verifyGitLabToken(token: string | undefined): boolean {
@@ -199,9 +225,14 @@ export class WebhookService {
     }
   }
 
+  /**
+   * @param signedByAppId local id of the App whose secret verified this
+   *   delivery, or null when it was signed with WEBHOOK_SECRET.
+   */
   async handleGitHub(
     payload: any,
     headers: Record<string, string>,
+    signedByAppId: string | null = null,
   ): Promise<WebhookResult> {
     const event = headers["x-github-event"];
 
@@ -214,7 +245,7 @@ export class WebhookService {
     }
 
     if (event === "installation" || event === "installation_repositories") {
-      return this.handleInstallation(event, payload);
+      return this.handleInstallation(event, payload, signedByAppId);
     }
 
     // GitHub shows this response in its own UI when you test a webhook, so
@@ -236,7 +267,16 @@ export class WebhookService {
   private async handleInstallation(
     event: string,
     payload: any,
+    signedByAppId: string | null,
   ): Promise<WebhookResult> {
+    // Only an App's own secret can speak for its installations. A delivery
+    // signed with WEBHOOK_SECRET (a repository webhook) has no say here.
+    if (!signedByAppId) {
+      return {
+        triggered: false,
+        message: "Installation event not signed by a GitHub App — ignored",
+      };
+    }
     const action = payload.action as string;
     const installationId = Number(payload.installation?.id);
     if (!Number.isFinite(installationId)) {
@@ -263,14 +303,9 @@ export class WebhookService {
       };
     }
 
-    const app = await db.query.githubApps.findFirst();
-    if (!app) {
-      return { triggered: false, message: "No GitHub App configured" };
-    }
-
     const account = payload.installation?.account;
     const values = {
-      githubAppId: app.id,
+      githubAppId: signedByAppId,
       installationId,
       accountLogin: account?.login ?? "unknown",
       accountType: account?.type ?? null,
