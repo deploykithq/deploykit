@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/deploykithq/deploykit/compare/v0.7.1...v0.7.2) (2026-11-06)
+
+
+### Bug Fixes
+
+* added the ability to install more than one GitHub app. ([#29](https://github.com/deploykithq/deploykit/issues/29)) ([b4a4209](https://github.com/deploykithq/deploykit/commit/b4a4209b827997a4d500c1a1946e8c209fdc77f5))
+
 ## [0.7.1](https://github.com/deploykithq/deploykit/compare/v0.7.0...v0.7.1) (2026-10-18)
 
 
