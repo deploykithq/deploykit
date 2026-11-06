@@ -116,6 +116,15 @@ describe("buildManifest", () => {
       "Acme Deploys",
     );
   });
+
+  it("adds the organization, so a second App on the same host does not collide", () => {
+    expect(
+      mod.buildManifest(mod.manifestUrls(), undefined, "acme-inc").name,
+    ).toBe("DeployKit - deploy.acme.io (acme-inc)");
+    expect(
+      mod.buildManifest(mod.manifestUrls(), "Mine", "acme-inc").name,
+    ).toBe("Mine");
+  });
 });
 
 describe("manifestPostUrl", () => {

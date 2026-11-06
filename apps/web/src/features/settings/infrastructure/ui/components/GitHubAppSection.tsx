@@ -11,7 +11,11 @@ import { trpc } from "@lib/trpc";
 export const GitHubAppSection: React.FC = memo(function GitHubAppSection() {
   const { data, isLoading } = trpc.github.status.useQuery();
 
-  const installations = data?.installations.length ?? 0;
+  const apps = data?.apps ?? [];
+  const installations = apps.reduce(
+    (n, app) => n + app.installations.length,
+    0,
+  );
 
   return (
     <SectionCard icon={Github} title="GitHub App">
@@ -24,10 +28,14 @@ export const GitHubAppSection: React.FC = memo(function GitHubAppSection() {
 
         {!isLoading && (
           <div className="rounded-lg bg-surface-2 border border-border px-3 py-2">
-            {data?.configured && data.app ? (
+            {data?.configured && apps.length > 0 ? (
               <p className="text-sm flex items-center gap-2">
                 <CheckCircle className="w-4 h-4 text-success shrink-0" />
-                <span className="truncate">{data.app.name}</span>
+                <span className="truncate">
+                  {apps.length === 1
+                    ? apps[0]!.name
+                    : `${apps.length} GitHub Apps`}
+                </span>
                 <span className="text-xs text-text-muted shrink-0">
                   {installations === 0
                     ? "not installed yet"
