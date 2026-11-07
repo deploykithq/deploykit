@@ -111,4 +111,43 @@ describe("steamWorkshop", () => {
     expect(url.searchParams.get("page")).toBe("2");
     expect(r.hits[0]!.name).toBe("Boss Checklist");
   });
+
+  it("cannot tell what an item requires without a key", async () => {
+    mockFetch({});
+    expect(await steamWorkshop.requires!("2669644269", TML)).toBeNull();
+    expect(calls).toHaveLength(0);
+  });
+
+  it("reads required items from GetDetails children", async () => {
+    mockFetch({
+      "IPublishedFileService/GetDetails": {
+        response: {
+          publishedfiledetails: [
+            {
+              ...ITEM(),
+              children: [
+                { publishedfileid: "111", sortorder: 1, file_type: 0 },
+                { publishedfileid: "222", sortorder: 2, file_type: 0 },
+                { publishedfileid: "111", sortorder: 3, file_type: 0 },
+                { publishedfileid: "2669644269", sortorder: 4, file_type: 0 },
+                { publishedfileid: "../x", sortorder: 5, file_type: 0 },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    expect(await steamWorkshop.requires!("2669644269", { ...TML, apiKey: "K" })).toEqual([
+      "111",
+      "222",
+    ]);
+    const url = new URL(calls[0]!.url);
+    expect(url.searchParams.get("includechildren")).toBe("true");
+    expect(url.searchParams.get("publishedfileids[0]")).toBe("2669644269");
+  });
+
+  it("treats an item without children as requiring nothing", async () => {
+    mockFetch({ "IPublishedFileService/GetDetails": DETAILS() });
+    expect(await steamWorkshop.requires!("2669644269", { ...TML, apiKey: "K" })).toEqual([]);
+  });
 });

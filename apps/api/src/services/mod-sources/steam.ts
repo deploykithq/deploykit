@@ -117,6 +117,36 @@ const steamWorkshop: ModSourceAdapterI = {
     return [version];
   },
 
+  /**
+   * An item's "Required items" are its children. Only IPublishedFileService
+   * returns them, and it needs a key: GetCollectionDetails answers "not a
+   * collection" for an ordinary item, and the Workshop page is HTML.
+   */
+  async requires(projectId, ctx) {
+    if (!ctx.apiKey) return null;
+    if (!ID_REGEX.test(projectId)) throw new ModSourceError("BAD_REQUEST", "Not a Workshop item id");
+    const params = new URLSearchParams({
+      key: ctx.apiKey,
+      "publishedfileids[0]": projectId,
+      includechildren: "true",
+    });
+    const data = await fetchJson<any>(`${API}/IPublishedFileService/GetDetails/v1/?${params}`, {
+      cacheSec: 300,
+      what: "the Steam Workshop",
+    });
+    const item = data.response?.publishedfiledetails?.[0];
+    if (!item || item.result !== 1) {
+      throw new ModSourceError("NOT_FOUND", "Workshop item not found (or not public)");
+    }
+    return [
+      ...new Set(
+        ((item.children ?? []) as any[])
+          .map((c) => String(c?.publishedfileid ?? ""))
+          .filter((id) => ID_REGEX.test(id) && id !== projectId),
+      ),
+    ];
+  },
+
   async validateKey(key) {
     const params = new URLSearchParams({
       key,
