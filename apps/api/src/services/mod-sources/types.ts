@@ -62,6 +62,13 @@ interface ModSourceAdapterI {
   ): Promise<ModVersionI[]>;
   /** Pull a project id/slug out of a URL or bare id; null when it is not this source's. */
   parseRef(input: string): string | null;
+  /**
+   * Ids of the items this one directly requires, or null when this context
+   * cannot tell (no key). Only sources whose image does not resolve
+   * dependencies itself implement it: the supervisor already follows
+   * Modrinth's and CurseForge's `required` dependencies.
+   */
+  requires?(projectId: string, ctx: ModSourceContextI): Promise<string[] | null>;
   /** Throws ModSourceError("UNAUTHORIZED") when the provider rejects the key. */
   validateKey?(key: string): Promise<void>;
 }

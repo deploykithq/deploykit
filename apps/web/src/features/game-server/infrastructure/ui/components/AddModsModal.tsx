@@ -61,9 +61,33 @@ export const AddModsModal: React.FC<AddModsModalPropsI> = memo(function AddModsM
     enabled: open && Boolean(current?.search),
   });
 
+  const [notice, setNotice] = useState<{ info: string | null; warning: string | null } | null>(
+    null,
+  );
+
   const addMutation = trpc.gameServer.mods.add.useMutation({
-    onSuccess: (mod) => {
-      setAdded((prev) => new Set(prev).add(mod.projectId));
+    onMutate: () => setNotice(null),
+    onSuccess: ({ mod, required }) => {
+      setAdded((prev) => {
+        const next = new Set(prev).add(mod.projectId);
+        for (const m of required.added) next.add(m.projectId);
+        return next;
+      });
+      const names = (list: Array<{ name: string }>) => list.map((m) => m.name).join(", ");
+      const info = [
+        required.added.length > 0 && `Also added what ${mod.name} requires: ${names(required.added)}.`,
+        required.enabled.length > 0 && `Enabled required: ${names(required.enabled)}.`,
+      ]
+        .filter(Boolean)
+        .join(" ");
+      const warning = !required.checked
+        ? `Required items of ${mod.name} were not checked: ${required.reason}.`
+        : required.skipped.length > 0
+          ? `Could not add some required items of ${mod.name}: ${required.skipped
+              .map((s) => s.reason)
+              .join("; ")}.`
+          : null;
+      setNotice(info || warning ? { info: info || null, warning } : null);
       setPasted("");
       if (serverId) utils.gameServer.mods.list.invalidate({ id: serverId });
     },
@@ -136,6 +160,8 @@ export const AddModsModal: React.FC<AddModsModalPropsI> = memo(function AddModsM
         )}
 
         {addMutation.error && <p className="text-sm text-danger">{addMutation.error.message}</p>}
+        {notice?.info && <p className="text-sm text-text-secondary">{notice.info}</p>}
+        {notice?.warning && <p className="text-sm text-warning">{notice.warning}</p>}
 
         {current?.search && (
           <>

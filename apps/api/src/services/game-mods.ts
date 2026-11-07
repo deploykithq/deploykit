@@ -188,12 +188,136 @@ const pickVersion = (
 const isUniqueViolation = (err: any) =>
   err?.code === "23505" || err?.cause?.code === "23505";
 
+/** A whole dependency tree is looked up per add: keep a runaway one bounded. */
+const MAX_REQUIRED = 25;
+
+interface RequiredItemI {
+  project: ModSummaryI;
+  version: ModVersionI;
+}
+
+interface RequiredResolutionI {
+  /** False when the source could not say (no key, provider down). */
+  checked: boolean;
+  reason?: string;
+  items: RequiredItemI[];
+  /** Required items that could not be added, and why. */
+  skipped: Array<{ projectId: string; reason: string }>;
+}
+
+interface AddModResultI {
+  mod: GameServerModT;
+  required: {
+    checked: boolean;
+    reason?: string;
+    added: GameServerModT[];
+    enabled: GameServerModT[];
+    skipped: Array<{ projectId: string; reason: string }>;
+  };
+}
+
+/**
+ * Walk what `rootId` requires, breadth-first. Nothing is fetched from a
+ * pasted link: every id comes from the provider's own answer. Only sources
+ * with `requires` are walked (the Workshop); for the others the image
+ * resolves dependencies itself.
+ */
+const resolveRequired = async (
+  spec: Pick<GameSpecT, "mods">,
+  sourceId: ModSourceIdT,
+  rootId: string,
+  filter: ModFilterI,
+): Promise<RequiredResolutionI> => {
+  const adapter = adapterFor(sourceId);
+  if (!adapter.requires) return { checked: true, items: [], skipped: [] };
+  const ctx = await contextFor(declaredSource(spec, sourceId));
+  const items: RequiredItemI[] = [];
+  const skipped: RequiredResolutionI["skipped"] = [];
+  const seen = new Set([rootId]);
+  const queue = [rootId];
+
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    let children: string[] | null;
+    try {
+      children = await adapter.requires(id, ctx);
+    } catch (err) {
+      if (!(err instanceof ModSourceError)) throw err;
+      // The item itself was found a moment ago: this is the key or the provider.
+      if (id === rootId) return { checked: false, reason: err.message, items: [], skipped: [] };
+      skipped.push({ projectId: id, reason: `its own requirements: ${err.message}` });
+      continue;
+    }
+    if (children === null) {
+      return {
+        checked: false,
+        reason: "Checking required items needs a Steam Web API key (Settings → Game mods)",
+        items: [],
+        skipped: [],
+      };
+    }
+    for (const child of children) {
+      if (seen.has(child)) continue;
+      seen.add(child);
+      if (items.length + skipped.length >= MAX_REQUIRED) {
+        skipped.push({ projectId: child, reason: `more than ${MAX_REQUIRED} required items` });
+        continue;
+      }
+      try {
+        const project = await adapter.project(child, ctx);
+        if (!project.installable) {
+          skipped.push({ projectId: child, reason: `${project.name}: ${project.reason}` });
+          continue;
+        }
+        const versions = await adapter.versions(child, filter, ctx);
+        const version = versions.find((v) => v.type === "release") ?? versions[0];
+        if (!version) {
+          skipped.push({ projectId: child, reason: `${project.name}: no version fits this server` });
+          continue;
+        }
+        items.push({ project, version });
+        queue.push(child);
+      } catch (err) {
+        if (!(err instanceof ModSourceError)) throw err;
+        skipped.push({ projectId: child, reason: err.message });
+      }
+    }
+  }
+  return { checked: true, items, skipped };
+};
+
+const modValues = (
+  row: ModRowT,
+  project: ModSummaryI,
+  version: ModVersionI,
+  kind: ModKindT,
+  userId: string,
+) => ({
+  gameServerId: row.id,
+  source: project.source,
+  projectId: project.projectId,
+  slug: project.slug,
+  name: project.name.slice(0, 200),
+  iconUrl: project.iconUrl?.slice(0, 1000) ?? null,
+  kind: kind === "plugin" ? ("plugin" as const) : ("mod" as const),
+  // The Workshop always serves the latest upload; nothing to pin.
+  versionId: project.source === "steam-workshop" ? null : version.id,
+  versionLabel: version.label.slice(0, 200),
+  addedBy: userId,
+});
+
+/**
+ * Add a mod and, for the Workshop, everything it requires: a missing one is
+ * added, a disabled one is enabled (tModLoader refuses to load a mod whose
+ * dependency is off). An unknown requirement never blocks the add — it is
+ * reported, as is not being able to check at all.
+ */
 const addMod = async (
   row: ModRowT,
   values: Record<string, string>,
   input: { source: ModSourceIdT; ref: string; versionId?: string },
   userId: string,
-): Promise<GameServerModT> => {
+): Promise<AddModResultI> => {
   const project = await lookupProject(row.spec, input.source, input.ref);
   if (project.kind === "modpack") {
     throw new GameModError(
@@ -204,26 +328,54 @@ const addMod = async (
   const filter = await resolveFilter(row, values);
   const versions = await listVersions(row.spec, input.source, project.projectId, filter);
   const version = pickVersion(versions, input.versionId, project.name, filter);
-  // The Workshop always serves the latest upload; nothing to pin.
-  const pinned = input.source === "steam-workshop" ? null : version.id;
+  const required = await resolveRequired(row.spec, input.source, project.projectId, filter);
+
+  const existing = new Map(
+    (await listMods(row)).filter((m) => m.source === input.source).map((m) => [m.projectId, m]),
+  );
+  if (existing.has(project.projectId)) {
+    throw new GameModError("CONFLICT", `${project.name} is already on this server`);
+  }
 
   try {
-    const [created] = await db
-      .insert(gameServerMods)
-      .values({
-        gameServerId: row.id,
-        source: input.source,
-        projectId: project.projectId,
-        slug: project.slug,
-        name: project.name.slice(0, 200),
-        iconUrl: project.iconUrl?.slice(0, 1000) ?? null,
-        kind: filter.kind === "plugin" ? "plugin" : "mod",
-        versionId: pinned,
-        versionLabel: version.label.slice(0, 200),
-        addedBy: userId,
-      })
-      .returning();
-    return created!;
+    return await db.transaction(async (tx) => {
+      const [mod] = await tx
+        .insert(gameServerMods)
+        .values(modValues(row, project, version, filter.kind, userId))
+        .returning();
+      const added: GameServerModT[] = [];
+      const enabled: GameServerModT[] = [];
+      for (const item of required.items) {
+        const have = existing.get(item.project.projectId);
+        if (have) {
+          if (have.enabled) continue;
+          const [on] = await tx
+            .update(gameServerMods)
+            .set({ enabled: true, updatedAt: new Date() })
+            .where(eq(gameServerMods.id, have.id))
+            .returning();
+          enabled.push(on!);
+          continue;
+        }
+        // A concurrent add of the same dependency is not an error.
+        const [created] = await tx
+          .insert(gameServerMods)
+          .values(modValues(row, item.project, item.version, filter.kind, userId))
+          .onConflictDoNothing()
+          .returning();
+        if (created) added.push(created);
+      }
+      return {
+        mod: mod!,
+        required: {
+          checked: required.checked,
+          ...(required.reason ? { reason: required.reason } : {}),
+          added,
+          enabled,
+          skipped: required.skipped,
+        },
+      };
+    });
   } catch (err) {
     if (isUniqueViolation(err)) {
       throw new GameModError("CONFLICT", `${project.name} is already on this server`);
@@ -362,6 +514,7 @@ export {
   searchModpacks,
   listVersions,
   addMod,
+  resolveRequired,
   updateMod,
   removeMod,
   listMods,
@@ -372,4 +525,5 @@ export {
   loadModEnv,
   modsPending,
   type ModRowT,
+  type AddModResultI,
 };

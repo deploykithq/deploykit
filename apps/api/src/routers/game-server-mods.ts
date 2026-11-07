@@ -221,7 +221,8 @@ export const gameServerModsRouter = router({
   add: operatorProcedure.input(addGameModSchema).mutation(async ({ ctx, input }) => {
     const { row } = await resolveServer(ctx, input.id, "operate");
     requireMods(row);
-    const mod = await guarded(() => addMod(row, allValues(row), input, ctx.user.id));
+    const result = await guarded(() => addMod(row, allValues(row), input, ctx.user.id));
+    const { mod, required } = result;
     await logAction(ctx, {
       action: "game_server.mod_add",
       resourceType: "game_server",
@@ -232,9 +233,13 @@ export const gameServerModsRouter = router({
         projectId: mod.projectId,
         name: mod.name,
         version: mod.versionLabel,
+        ...(required.added.length > 0 && { requiredAdded: required.added.map((m) => m.name) }),
+        ...(required.enabled.length > 0 && {
+          requiredEnabled: required.enabled.map((m) => m.name),
+        }),
       },
     });
-    return mod;
+    return result;
   }),
 
   update: operatorProcedure.input(updateGameModSchema).mutation(async ({ ctx, input }) => {

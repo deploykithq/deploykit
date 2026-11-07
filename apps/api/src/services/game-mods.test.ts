@@ -15,7 +15,11 @@ vi.mock("./mod-sources/index", async (orig) => ({
   resolveVersionAlias: vi.fn(async () => "1.21.4"),
 }));
 
-const { resolveFilter, modpackFromVersion, GameModError } = await import("./game-mods");
+const { resolveFilter, resolveRequired, modpackFromVersion, GameModError } = await import(
+  "./game-mods"
+);
+const { steamWorkshop } = await import("./mod-sources/steam");
+const { ModSourceError } = await import("./mod-sources/index");
 
 const SPEC: any = {
   variables: [
@@ -88,6 +92,101 @@ describe("modpackFromVersion", () => {
       versionLabel: "1.0",
       gameVersion: "1.20.1",
       loader: "fabric",
+    });
+  });
+});
+
+describe("resolveRequired", () => {
+  const TML_SPEC: any = {
+    mods: {
+      sources: [{ source: "steam-workshop", appId: 1281930, env: "DK_MODS_STEAM" }],
+      modpacks: [],
+      directories: [],
+    },
+  };
+  const FILTER = { loaders: null, kind: "mod" as const, gameVersion: null };
+  const summary = (id: string, installable = true) => ({
+    source: "steam-workshop" as const,
+    projectId: id,
+    slug: null,
+    name: `Mod ${id}`,
+    summary: "",
+    iconUrl: null,
+    author: null,
+    downloads: 0,
+    url: "",
+    kind: "mod" as const,
+    installable,
+    ...(installable ? {} : { reason: "gone" }),
+  });
+  const VERSION = {
+    id: "1",
+    label: "Updated 2026-01-01",
+    gameVersions: [],
+    loaders: [],
+    publishedAt: "",
+    type: "release" as const,
+  };
+
+  const stub = (tree: Record<string, string[] | null>, broken: string[] = []) => {
+    vi.spyOn(steamWorkshop, "requires").mockImplementation(async (id) => {
+      if (!(id in tree)) return [];
+      return tree[id]!;
+    });
+    vi.spyOn(steamWorkshop, "project").mockImplementation(async (id) => {
+      if (broken.includes(id)) throw new ModSourceError("NOT_FOUND", `Item ${id} not found`);
+      return summary(id, id !== "dead");
+    });
+    vi.spyOn(steamWorkshop, "versions").mockImplementation(async () => [VERSION]);
+  };
+
+  it("walks the tree once per item, cycles included", async () => {
+    stub({ root: ["a", "b"], a: ["c", "root"], b: ["a"], c: [] });
+    const r = await resolveRequired(TML_SPEC, "steam-workshop", "root", FILTER);
+    expect(r.checked).toBe(true);
+    expect(r.items.map((i) => i.project.projectId)).toEqual(["a", "b", "c"]);
+    expect(r.skipped).toEqual([]);
+  });
+
+  it("reports it could not check without a key", async () => {
+    stub({ root: null });
+    const r = await resolveRequired(TML_SPEC, "steam-workshop", "root", FILTER);
+    expect(r).toMatchObject({ checked: false, items: [] });
+    expect(r.reason).toMatch(/Steam Web API key/);
+  });
+
+  it("does not fail the add when the provider rejects the key", async () => {
+    stub({});
+    vi.spyOn(steamWorkshop, "requires").mockRejectedValue(
+      new ModSourceError("UNAUTHORIZED", "the Steam Workshop rejected the API key"),
+    );
+    const r = await resolveRequired(TML_SPEC, "steam-workshop", "root", FILTER);
+    expect(r).toMatchObject({ checked: false, reason: "the Steam Workshop rejected the API key" });
+  });
+
+  it("skips required items it cannot install, keeping the rest", async () => {
+    stub({ root: ["a", "dead", "missing"] }, ["missing"]);
+    const r = await resolveRequired(TML_SPEC, "steam-workshop", "root", FILTER);
+    expect(r.items.map((i) => i.project.projectId)).toEqual(["a"]);
+    expect(r.skipped.map((s) => s.projectId)).toEqual(["dead", "missing"]);
+  });
+
+  it("stops at a bounded number of required items", async () => {
+    const many = Array.from({ length: 40 }, (_, i) => `m${i}`);
+    stub({ root: many });
+    const r = await resolveRequired(TML_SPEC, "steam-workshop", "root", FILTER);
+    expect(r.items).toHaveLength(25);
+    expect(r.skipped).toHaveLength(15);
+  });
+
+  it("does nothing for sources whose image resolves dependencies", async () => {
+    const spec: any = {
+      mods: { sources: [{ source: "modrinth", env: "X" }], modpacks: [], directories: [] },
+    };
+    expect(await resolveRequired(spec, "modrinth", "P", FILTER)).toEqual({
+      checked: true,
+      items: [],
+      skipped: [],
     });
   });
 });
