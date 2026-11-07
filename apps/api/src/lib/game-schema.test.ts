@@ -6,6 +6,7 @@ import {
   gameSpecSchema,
   MODPACK_VARIABLES,
   validateGameValues,
+  validateWorldValues,
 } from "@deploykit/shared";
 
 /**
@@ -449,5 +450,69 @@ describe("createGameServerSchema", () => {
   it("starts the server unless told otherwise", () => {
     expect(createGameServerSchema.parse(input).start).toBe(true);
     expect(createGameServerSchema.parse({ ...input, start: false }).start).toBe(false);
+  });
+});
+
+describe("gameSpecSchema world", () => {
+  const withWorld = (world: unknown) => ({ ...MINECRAFT, world });
+
+  it("accepts a world on a declared volume with its creation variables", () => {
+    const spec = gameSpecSchema.parse(
+      withWorld({ volume: "data", paths: ["world", "world_nether"], variables: ["seed"] }),
+    );
+    expect(spec.world).toEqual({
+      volume: "data",
+      paths: ["world", "world_nether"],
+      variables: ["seed"],
+    });
+  });
+
+  it("refuses the whole volume, '..' and unknown volumes", () => {
+    expect(errorsOf(withWorld({ volume: "data", paths: ["."] })).join()).toMatch(/Not '\.'/);
+    expect(errorsOf(withWorld({ volume: "data", paths: ["a/../b"] }))).not.toEqual([]);
+    expect(errorsOf(withWorld({ volume: "data", paths: ["/etc"] }))).not.toEqual([]);
+    expect(errorsOf(withWorld({ volume: "nope", paths: ["world"] }))).toContain(
+      'Unknown volume "nope"',
+    );
+  });
+
+  it("refuses unknown, secret or repeated variables", () => {
+    expect(errorsOf(withWorld({ volume: "data", paths: ["w"], variables: ["size"] }))).toContain(
+      '"size" is not a declared variable',
+    );
+    expect(
+      errorsOf(withWorld({ volume: "data", paths: ["w"], variables: ["rcon_password"] })),
+    ).toContain('"rcon_password" is a secret');
+    expect(
+      errorsOf(withWorld({ volume: "data", paths: ["w"], variables: ["seed", "seed"] })),
+    ).toContain("Duplicate variable");
+  });
+});
+
+describe("validateWorldValues", () => {
+  const spec = gameSpecSchema.parse({
+    ...MINECRAFT,
+    world: { volume: "data", paths: ["world"], variables: ["seed"] },
+  });
+
+  it("lets a non-editable creation variable change, and blank means random", () => {
+    expect(validateWorldValues(spec, { seed: "abc" }, { seed: "old" })).toMatchObject({
+      values: { seed: "abc" },
+      errors: {},
+    });
+    expect(validateWorldValues(spec, { seed: "" }, { seed: "old" }).values).toEqual({ seed: "" });
+  });
+
+  it("refuses every other variable", () => {
+    expect(validateWorldValues(spec, { max_players: 4 }, {}).errors).toEqual({
+      max_players: "Unknown setting",
+    });
+  });
+
+  it("refuses everything when the game has no world", () => {
+    const { world: _w, ...noWorld } = spec;
+    expect(validateWorldValues(noWorld, { seed: "x" }, {}).errors).toEqual({
+      seed: "Unknown setting",
+    });
   });
 });

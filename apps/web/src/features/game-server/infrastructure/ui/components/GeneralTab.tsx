@@ -52,6 +52,8 @@ export const GeneralTab: React.FC<GameServerTabPropsI> = memo(function GeneralTa
               ? "Pulling the image and creating the container. This can take a few minutes the first time."
               : server.status === "restoring"
                 ? "Restoring a world backup. The server starts again when it finishes."
+                : server.status === "regenerating"
+                  ? "Backing up, then deleting the world. The server starts with a new one when it finishes."
                 : server.status === "running"
                   ? "The server is up."
                   : server.status === "idle"

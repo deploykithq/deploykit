@@ -14,6 +14,7 @@ export { MemoryField } from "./MemoryField";
 export { MonitoringTab } from "./MonitoringTab";
 export { NewGameServerModal } from "./NewGameServerModal";
 export { SettingsTab } from "./SettingsTab";
+export { RegenerateWorldCard } from "./RegenerateWorldCard";
 export { AddModsModal } from "./AddModsModal";
 export { ModRow } from "./ModRow";
 export { ModpackCard } from "./ModpackCard";

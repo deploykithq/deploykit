@@ -45,6 +45,7 @@ const ACTION_LABELS: Record<string, string> = {
   "game_server.mod_remove": "Removed a mod",
   "game_server.modpack_set": "Changed the modpack",
   "game_server.mods_apply": "Applied mod changes",
+  "game_server.world_regenerate": "Regenerated the world",
   "settings.update": "Updated a setting",
   "task.create": "Created task",
   "task.update": "Updated task",

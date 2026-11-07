@@ -7,6 +7,7 @@ const STATUS_DOT_COLORS: Record<string, string> = {
   queued: "bg-warning",
   provisioning: "bg-warning",
   restoring: "bg-warning",
+  regenerating: "bg-warning",
   stopped: "bg-text-muted",
   idle: "bg-text-muted",
   disconnected: "bg-text-muted",
@@ -24,6 +25,7 @@ const ACTIVE_STATUSES = [
   "queued",
   "provisioning",
   "restoring",
+  "regenerating",
 ];
 
 export { STATUS_DOT_COLORS, STATUS_DOT_FALLBACK, ACTIVE_STATUSES };

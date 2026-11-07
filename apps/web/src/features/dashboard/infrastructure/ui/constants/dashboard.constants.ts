@@ -139,6 +139,11 @@ const ACTION_CONFIG: Record<
     icon: Gamepad2,
     color: "text-accent",
   },
+  "game_server.world_regenerate": {
+    label: "regenerated the world of",
+    icon: Gamepad2,
+    color: "text-warning",
+  },
   "project.create": {
     label: "created project",
     icon: FolderKanban,

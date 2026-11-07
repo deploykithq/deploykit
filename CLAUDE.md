@@ -195,6 +195,16 @@ running server. v1 runs on the **local daemon only**.
   (`isDestructiveChange`). Mutating mods is `operatorProcedure` **and**
   project `canOperate`. `apply` is a reserved tRPC name, hence
   `mods.applyChanges`.
+- **Regenerate world.** A game's optional `world` block names the paths that
+  are its world (never `.`: a volume also holds mods and configs) and the
+  creation variables (seed, size) that may be set again then, though they are
+  not `editable`. `world.regenerate` is `operatorProcedure` **and** project
+  `canOperate`; it runs on the `game-backup` queue as `regenerate-world`
+  after a safety backup that cannot be skipped (`mayRegenerate`), empties the
+  paths in a helper (`services/game-world.ts`) and always ends with the
+  server recreated and running. The one exception to the snapshot rule:
+  `worldFor` reads the catalogue's `world` for a server created before its
+  game had one, and only when both use the same contract.
 - **Catalogue calls** go through `services/mod-sources/` to fixed hosts only;
   a pasted link is parsed for an id, never fetched. The CurseForge and Steam
   keys live encrypted in `instance_settings` (Settings → Game mods, admin

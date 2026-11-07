@@ -12,10 +12,12 @@ import { fireNotification } from "../services/notifier";
 import { ensureHelper, execIn, helperName, MOUNT_ROOT } from "../services/game-files";
 import { isRunning, sendConsoleCommand } from "../services/game-console";
 import { loadModEnv } from "../services/game-mods";
+import { clearWorld, mayRegenerate, worldFor } from "../services/game-world";
 import { mayApplyMods, snapshotModEnv } from "../services/game-mods-env";
 import {
   GAME_BACKUP_ROOT,
   gameBackupDir,
+  provisionGameContainer,
   recreateGameServer,
   setGameServerStatus,
   startGameServer,
@@ -41,13 +43,14 @@ import type { GameServerT } from "../db/schema/index";
  * Both go through one queue with concurrency 1, so they never overlap — which
  * is also what makes "safety backup, then restore" run in that order.
  * Applying mods (`apply-mods`: recreate the container with the current mod
- * list) goes through the same queue for the same reason.
+ * list) and regenerating the world (`regenerate-world`) go through the same
+ * queue for the same reason.
  */
 
 interface BackupJobI {
   gameServerId: string;
   backupId?: string;
-  trigger: "manual" | "schedule" | "pre-restore" | "pre-mods";
+  trigger: "manual" | "schedule" | "pre-restore" | "pre-mods" | "pre-regenerate";
   userId?: string;
 }
 
@@ -60,6 +63,14 @@ interface ApplyModsJobI {
   gameServerId: string;
   /** The safety backup queued ahead of this job, if one was. */
   backupId?: string;
+}
+
+interface RegenerateWorldJobI {
+  gameServerId: string;
+  /** The safety backup queued ahead of this job. Never optional. */
+  backupId: string;
+  /** The world's creation variables, already validated. */
+  values: Record<string, string>;
 }
 
 /** Failed backups are kept this long so the user can see why, then pruned. */
@@ -358,6 +369,75 @@ const runApplyMods = async (data: ApplyModsJobI): Promise<void> => {
   }
 };
 
+/**
+ * Delete the world and start the server so it generates a new one. The
+ * server always ends up running: a container recreated and left stopped
+ * would only generate the world on some later start, and stopping it
+ * mid-generation could leave half a world behind.
+ *
+ * Nothing is deleted unless the safety backup ahead of this job worked; the
+ * new creation values are stored only once the world is gone, so a failure
+ * before that leaves the server exactly as it was.
+ */
+const runRegenerateWorld = async (data: RegenerateWorldJobI): Promise<void> => {
+  const row = await db.query.gameServers.findFirst({
+    where: eq(gameServers.id, data.gameServerId),
+  });
+  if (!row) return;
+
+  const settle = async (statusMessage: string) => {
+    const running = Boolean(row.containerId) && (await isRunning(row.containerId!));
+    await setGameServerStatus(row.id, running ? "running" : "stopped", { statusMessage });
+  };
+
+  const backup = await db.query.gameServerBackups.findFirst({
+    where: and(
+      eq(gameServerBackups.id, data.backupId),
+      eq(gameServerBackups.gameServerId, row.id),
+    ),
+  });
+  const verdict = mayRegenerate(backup ? { status: backup.status, error: backup.error } : null);
+  if (!verdict.ok) {
+    await settle(verdict.reason);
+    throw new Error(verdict.reason);
+  }
+  const world = await worldFor(row);
+  if (!world) {
+    const reason = "This game does not declare where its world lives";
+    await settle(reason);
+    throw new Error(reason);
+  }
+
+  let helper: Docker.Container | null = null;
+  try {
+    await stopContainerGracefully(row);
+    helper = await ensureHelper(row, {
+      name: helperName(row, "world"),
+      purpose: "backup",
+      readOnly: false,
+      volumes: [world.volume],
+    });
+    await clearWorld(helper, world);
+    await removeContainer(helper);
+    helper = null;
+
+    const next: GameServerT = { ...row, config: { ...row.config, ...data.values } };
+    await db
+      .update(gameServers)
+      .set({ config: next.config, updatedAt: new Date() })
+      .where(eq(gameServers.id, row.id));
+    // Recreated, not restarted: the creation values are baked into its env.
+    await provisionGameContainer(next);
+  } catch (err: any) {
+    await setGameServerStatus(row.id, "error", {
+      statusMessage: `Regenerating the world failed: ${err?.message ?? err}`,
+    });
+    throw err;
+  } finally {
+    if (helper) await removeContainer(helper);
+  }
+};
+
 const startGameBackupWorker = () => {
   fs.mkdirSync(GAME_BACKUP_ROOT, { recursive: true });
 
@@ -366,6 +446,9 @@ const startGameBackupWorker = () => {
     async (job: Job) => {
       if (job.name === "restore") return runRestore(job.data as RestoreJobI);
       if (job.name === "apply-mods") return runApplyMods(job.data as ApplyModsJobI);
+      if (job.name === "regenerate-world") {
+        return runRegenerateWorld(job.data as RegenerateWorldJobI);
+      }
       return runBackup(job.data as BackupJobI);
     },
     { connection: redis, concurrency: 1 },

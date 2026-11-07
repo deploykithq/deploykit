@@ -290,7 +290,7 @@ export const gameServerModsRouter = router({
   applyChanges: operatorProcedure.input(applyGameModsSchema).mutation(async ({ ctx, input }) => {
     const { row } = await resolveServer(ctx, input.id, "operate");
     requireMods(row);
-    if (row.status === "restoring" || row.status === "provisioning") {
+    if (["restoring", "provisioning", "regenerating"].includes(row.status)) {
       throw new TRPCError({
         code: "CONFLICT",
         message: `The server is ${row.status}; try again when it is done`,

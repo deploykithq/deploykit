@@ -98,6 +98,7 @@ type AuditActionT =
   | "game_server.mod_remove"
   | "game_server.modpack_set"
   | "game_server.mods_apply"
+  | "game_server.world_regenerate"
   | "settings.update";
 
 type ResourceTypeT =

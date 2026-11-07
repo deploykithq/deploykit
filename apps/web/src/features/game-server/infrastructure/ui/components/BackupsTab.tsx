@@ -25,6 +25,7 @@ import { cn, formatBytes, timeAgo } from "@lib/utils";
 import {
   BACKUP_TRIGGER_LABELS,
   CRON_PRESETS,
+  TRANSITIONAL_STATUSES,
 } from "@game-server/infrastructure/ui/constants/game-server.constants";
 
 import type { GameServerTabPropsI } from "@game-server/infrastructure/ui/interfaces/game-server.interfaces";
@@ -155,7 +156,7 @@ export const BackupsTab: React.FC<GameServerTabPropsI> = memo(function BackupsTa
               size="sm"
               variant="secondary"
               onClick={b.create}
-              disabled={b.creating || b.anyInProgress || server.status === "restoring"}
+              disabled={b.creating || b.anyInProgress || TRANSITIONAL_STATUSES.includes(server.status)}
             >
               <Plus className="w-3.5 h-3.5" />
               {b.creating ? "Queuing…" : "Backup now"}
@@ -224,7 +225,7 @@ export const BackupsTab: React.FC<GameServerTabPropsI> = memo(function BackupsTa
                           b.setSafetyBackup(true);
                           b.setRestoreTarget(backup);
                         }}
-                        disabled={server.status === "restoring"}
+                        disabled={TRANSITIONAL_STATUSES.includes(server.status)}
                         title="Restore this backup"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
