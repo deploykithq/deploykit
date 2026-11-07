@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.4](https://github.com/deploykithq/deploykit/compare/v0.7.3...v0.7.4) (2026-11-07)
+
+
+### Bug Fixes
+
+* game images update ([#34](https://github.com/deploykithq/deploykit/issues/34)) ([211a577](https://github.com/deploykithq/deploykit/commit/211a577be0e6c132b121564dde8d4d298a49b5b5))
+
 ## [0.7.3](https://github.com/deploykithq/deploykit/compare/v0.7.2...v0.7.3) (2026-11-07)
 
 
