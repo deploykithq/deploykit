@@ -139,6 +139,11 @@ const ACTION_CONFIG: Record<
     icon: Gamepad2,
     color: "text-accent",
   },
+  "game_server.image_update": {
+    label: "updated the image of",
+    icon: Gamepad2,
+    color: "text-accent",
+  },
   "game_server.world_regenerate": {
     label: "regenerated the world of",
     icon: Gamepad2,

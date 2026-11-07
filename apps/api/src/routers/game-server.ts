@@ -38,6 +38,7 @@ import {
   writeFile,
 } from "../services/game-files";
 import { checkWorldValues, worldFor, worldInfo } from "../services/game-world";
+import { checkImageUpdate } from "../services/game-image";
 import {
   allValues,
   connectInfo,
@@ -105,6 +106,10 @@ const fileTarget = z.object({
   volume: z.string().min(1).max(32),
   path: z.string().max(1024),
 });
+
+/** Each check asks the catalogue and the image registry. */
+const IMAGE_CHECK_LIMIT = 10;
+const IMAGE_CHECK_WINDOW_MS = 60_000;
 
 /** A server in one of these is already being changed by a queued job. */
 const BUSY_STATUSES = new Set(["provisioning", "restoring", "regenerating"]);
@@ -360,6 +365,89 @@ export const gameServerRouter = router({
           metadata: { volume: input.volume, from: input.path, to: input.to },
         });
         return { success: true };
+      }),
+  }),
+
+  image: router({
+    /** Whether the catalogue moved to a new tag, or the tag has a new build. */
+    check: protectedProcedure
+      .input(z.object({ id: z.string().uuid() }))
+      .query(async ({ ctx, input }) => {
+        const { row, role } = await resolveServer(ctx, input.id, "view");
+        if (await isRateLimited(`image-check:${ctx.user.id}`, IMAGE_CHECK_LIMIT, IMAGE_CHECK_WINDOW_MS)) {
+          throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Too many checks, wait a minute" });
+        }
+        const check = await guarded(() => checkImageUpdate(row));
+        // Updating needs the global operator role as well (operatorProcedure).
+        return { ...check, canEdit: canOperate(role) && ctx.user.role !== "viewer" };
+      }),
+
+    /**
+     * Pull the game's current image and recreate the container with it. A
+     * new image is new code, so the same bar as mods: global operator AND
+     * project `canOperate`, with an optional safety backup first.
+     */
+    update: operatorProcedure
+      .input(z.object({ id: z.string().uuid(), safetyBackup: z.boolean().default(true) }))
+      .mutation(async ({ ctx, input }) => {
+        const { row } = await resolveServer(ctx, input.id, "operate");
+        if (BUSY_STATUSES.has(row.status)) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `The server is ${row.status}; try again when it is done`,
+          });
+        }
+        const check = await guarded(() => checkImageUpdate(row));
+        if (!check.available) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "The image is already up to date" });
+        }
+        const audit = {
+          action: "game_server.image_update" as const,
+          resourceType: "game_server" as const,
+          resourceId: row.id,
+          resourceName: row.name,
+          metadata: { from: check.current, to: check.target, safetyBackup: input.safetyBackup },
+        };
+
+        // Never provisioned: the first start pulls whatever the spec names.
+        if (!row.containerId) {
+          if (check.specImage) {
+            await ctx.db
+              .update(gameServers)
+              .set({ spec: { ...row.spec, image: check.specImage }, updatedAt: new Date() })
+              .where(eq(gameServers.id, row.id));
+          }
+          await logAction(ctx, audit);
+          return { queued: false, appliesOnStart: true };
+        }
+
+        let backupId: string | undefined;
+        if (input.safetyBackup) {
+          const [safety] = await ctx.db
+            .insert(gameServerBackups)
+            .values({
+              gameServerId: row.id,
+              filename: "",
+              status: "queued",
+              trigger: "pre-image",
+              triggeredBy: ctx.user.id,
+            })
+            .returning();
+          backupId = safety!.id;
+        }
+        await setGameServerStatus(row.id, "provisioning");
+        if (backupId) {
+          await gameBackupQueue.add("backup", {
+            gameServerId: row.id,
+            backupId,
+            trigger: "pre-image",
+            userId: ctx.user.id,
+          });
+        }
+        await gameBackupQueue.add("update-image", { gameServerId: row.id, backupId });
+
+        await logAction(ctx, audit);
+        return { queued: true, appliesOnStart: false };
       }),
   }),
 

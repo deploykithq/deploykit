@@ -721,6 +721,8 @@ export {
   removeGameServer,
   removeHelpers,
   connectInfo,
+  resolveImage,
+  substitutionValues,
   setStatus as setGameServerStatus,
   loadPorts as loadGameServerPorts,
 };

@@ -202,9 +202,18 @@ running server. v1 runs on the **local daemon only**.
   `canOperate`; it runs on the `game-backup` queue as `regenerate-world`
   after a safety backup that cannot be skipped (`mayRegenerate`), empties the
   paths in a helper (`services/game-world.ts`) and always ends with the
-  server recreated and running. The one exception to the snapshot rule:
+  server recreated and running. An exception to the snapshot rule:
   `worldFor` reads the catalogue's `world` for a server created before its
   game had one, and only when both use the same contract.
+- **Update image** (`services/game-image.ts`) is the other exception: only
+  `spec.image` is taken from the catalogue, for the same contract, and only
+  if it resolves with the snapshot's variables. It also catches a new build
+  of the *same* tag by comparing the registry's digest
+  (`image.distribution()`) with the running container's `RepoDigests` —
+  `createAndStart` pulls only a missing image, so a floating tag is never
+  refreshed otherwise. `image.update` is `operatorProcedure` **and**
+  `canOperate`; the `update-image` job pulls *before* stopping (a registry
+  outage changes nothing) and keeps a stopped server stopped.
 - **Catalogue calls** go through `services/mod-sources/` to fixed hosts only;
   a pasted link is parsed for an id, never fetched. The CurseForge and Steam
   keys live encrypted in `instance_settings` (Settings → Game mods, admin

@@ -99,6 +99,7 @@ type AuditActionT =
   | "game_server.modpack_set"
   | "game_server.mods_apply"
   | "game_server.world_regenerate"
+  | "game_server.image_update"
   | "settings.update";
 
 type ResourceTypeT =

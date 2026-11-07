@@ -122,6 +122,12 @@ interface GameServerTabPropsI {
   permissions: GameServerPermissionsI;
 }
 
+interface ImageUpdateCardPropsI {
+  server: GameServerDetailT;
+  /** A job is already changing the server. */
+  busy: boolean;
+}
+
 interface RegenerateWorldCardPropsI extends GameServerTabPropsI {
   /** A job is already changing the server. */
   busy: boolean;
@@ -209,6 +215,7 @@ export type {
   GeneratedSecretsViewPropsI,
   GameServerTabPropsI,
   RegenerateWorldCardPropsI,
+  ImageUpdateCardPropsI,
   GameServerCardItemI,
   GameModsListT,
   GameModT,

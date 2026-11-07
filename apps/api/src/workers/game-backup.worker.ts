@@ -13,6 +13,8 @@ import { ensureHelper, execIn, helperName, MOUNT_ROOT } from "../services/game-f
 import { isRunning, sendConsoleCommand } from "../services/game-console";
 import { loadModEnv } from "../services/game-mods";
 import { clearWorld, mayRegenerate, worldFor } from "../services/game-world";
+import { catalogueImage, mayUpdateImage, resolveFor } from "../services/game-image";
+import { getDockerForServer } from "../services/docker-factory";
 import { mayApplyMods, snapshotModEnv } from "../services/game-mods-env";
 import {
   GAME_BACKUP_ROOT,
@@ -43,14 +45,14 @@ import type { GameServerT } from "../db/schema/index";
  * Both go through one queue with concurrency 1, so they never overlap — which
  * is also what makes "safety backup, then restore" run in that order.
  * Applying mods (`apply-mods`: recreate the container with the current mod
- * list) and regenerating the world (`regenerate-world`) go through the same
- * queue for the same reason.
+ * list), regenerating the world (`regenerate-world`) and updating the image
+ * (`update-image`) go through the same queue for the same reason.
  */
 
 interface BackupJobI {
   gameServerId: string;
   backupId?: string;
-  trigger: "manual" | "schedule" | "pre-restore" | "pre-mods" | "pre-regenerate";
+  trigger: "manual" | "schedule" | "pre-restore" | "pre-mods" | "pre-regenerate" | "pre-image";
   userId?: string;
 }
 
@@ -62,6 +64,12 @@ interface RestoreJobI {
 interface ApplyModsJobI {
   gameServerId: string;
   /** The safety backup queued ahead of this job, if one was. */
+  backupId?: string;
+}
+
+interface UpdateImageJobI {
+  gameServerId: string;
+  /** The safety backup queued ahead of this job, if one was asked for. */
   backupId?: string;
 }
 
@@ -438,6 +446,71 @@ const runRegenerateWorld = async (data: RegenerateWorldJobI): Promise<void> => {
   }
 };
 
+/**
+ * Move the server to its game's current image. Whether the catalogue moved
+ * to a new tag is decided again now — it may have changed while the job
+ * waited — and the target is always pulled, since `createAndStart` skips an
+ * image already on the host and a floating tag would never be refreshed.
+ * The pull comes before the stop, so a registry outage leaves the server
+ * running as it was. A stopped server stays stopped.
+ */
+const runUpdateImage = async (data: UpdateImageJobI): Promise<void> => {
+  const row = await db.query.gameServers.findFirst({
+    where: eq(gameServers.id, data.gameServerId),
+  });
+  if (!row) return;
+
+  const settle = async (statusMessage: string) => {
+    const running = Boolean(row.containerId) && (await isRunning(row.containerId!));
+    await setGameServerStatus(row.id, running ? "running" : "stopped", { statusMessage });
+  };
+
+  const backup = data.backupId
+    ? await db.query.gameServerBackups.findFirst({
+        where: and(
+          eq(gameServerBackups.id, data.backupId),
+          eq(gameServerBackups.gameServerId, row.id),
+        ),
+      })
+    : null;
+  const verdict = mayUpdateImage(backup ? { status: backup.status, error: backup.error } : null);
+  if (!verdict.ok) {
+    await settle(verdict.reason);
+    throw new Error(verdict.reason);
+  }
+
+  const specImage = await catalogueImage(row);
+  const next: GameServerT = specImage ? { ...row, spec: { ...row.spec, image: specImage } } : row;
+  try {
+    const target = await resolveFor(next, next.spec);
+    const { docker: local } = await getDockerForServer(null);
+    await local.pullImage(target);
+  } catch (err: any) {
+    const reason = `Could not pull the new image: ${err?.message ?? err}`;
+    await settle(reason);
+    throw new Error(reason);
+  }
+
+  try {
+    if (specImage) {
+      await db
+        .update(gameServers)
+        .set({ spec: next.spec, updatedAt: new Date() })
+        .where(eq(gameServers.id, row.id));
+    }
+    if (row.containerId) {
+      await recreateGameServer(row, next);
+    } else {
+      await setGameServerStatus(row.id, "idle");
+    }
+  } catch (err: any) {
+    await setGameServerStatus(row.id, "error", {
+      statusMessage: `Updating the image failed: ${err?.message ?? err}`,
+    });
+    throw err;
+  }
+};
+
 const startGameBackupWorker = () => {
   fs.mkdirSync(GAME_BACKUP_ROOT, { recursive: true });
 
@@ -446,6 +519,7 @@ const startGameBackupWorker = () => {
     async (job: Job) => {
       if (job.name === "restore") return runRestore(job.data as RestoreJobI);
       if (job.name === "apply-mods") return runApplyMods(job.data as ApplyModsJobI);
+      if (job.name === "update-image") return runUpdateImage(job.data as UpdateImageJobI);
       if (job.name === "regenerate-world") {
         return runRegenerateWorld(job.data as RegenerateWorldJobI);
       }
