@@ -89,6 +89,7 @@ const BACKUP_TRIGGER_LABELS: Record<string, string> = {
   "pre-restore": "Before restore",
   "pre-mods": "Before mod change",
   "pre-regenerate": "Before world regeneration",
+  "pre-image": "Before image update",
 };
 
 const MOD_SOURCE_LABELS: Record<string, string> = {

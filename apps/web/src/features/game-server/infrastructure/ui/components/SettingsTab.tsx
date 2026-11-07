@@ -7,6 +7,7 @@ import { Card } from "@shared/components/card";
 import { GamePortsFields } from "@game-server/infrastructure/ui/components/GamePortsFields";
 import { GameServerForm } from "@game-server/infrastructure/ui/components/GameServerForm";
 import { MemoryField } from "@game-server/infrastructure/ui/components/MemoryField";
+import { ImageUpdateCard } from "@game-server/infrastructure/ui/components/ImageUpdateCard";
 import { RegenerateWorldCard } from "@game-server/infrastructure/ui/components/RegenerateWorldCard";
 
 import { useGameSettings } from "@game-server/infrastructure/ui/hooks/useGameSettings";
@@ -129,6 +130,7 @@ export const SettingsTab: React.FC<GameServerTabPropsI> = memo(function Settings
           </>
         )}
       </form>
+      <ImageUpdateCard server={server} busy={busy} />
       <RegenerateWorldCard server={server} permissions={permissions} busy={busy} />
     </div>
   );
