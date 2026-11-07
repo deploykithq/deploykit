@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.3](https://github.com/deploykithq/deploykit/compare/v0.7.2...v0.7.3) (2026-11-07)
+
+
+### Bug Fixes
+
+* added button to regenerate world for tmodloader ([#33](https://github.com/deploykithq/deploykit/issues/33)) ([43f8dea](https://github.com/deploykithq/deploykit/commit/43f8dea121c834f1c9e7d26712aa16856339b122))
+* added download of mod dependencies in tModLoader ([#31](https://github.com/deploykithq/deploykit/issues/31)) ([50bc1a2](https://github.com/deploykithq/deploykit/commit/50bc1a23c56dc29f1a8800210452c5c2fd71b78b))
+
 ## [0.7.2](https://github.com/deploykithq/deploykit/compare/v0.7.1...v0.7.2) (2026-11-06)
 
 
