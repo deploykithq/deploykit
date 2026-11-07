@@ -27,6 +27,7 @@ type GameServerStatusT =
   | "running"
   | "stopped"
   | "restoring"
+  | "regenerating"
   | "error";
 
 type GameServerTabT =
@@ -121,6 +122,11 @@ interface GameServerTabPropsI {
   permissions: GameServerPermissionsI;
 }
 
+interface RegenerateWorldCardPropsI extends GameServerTabPropsI {
+  /** A job is already changing the server. */
+  busy: boolean;
+}
+
 type GameModsListT = Awaited<ReturnType<GameServerClientT["mods"]["list"]["query"]>>;
 type GameModT = GameModsListT["mods"][number];
 type ModSourceInfoT = Awaited<ReturnType<GameServerClientT["mods"]["sources"]["query"]>>[number];
@@ -202,6 +208,7 @@ export type {
   GameCatalogPickerPropsI,
   GeneratedSecretsViewPropsI,
   GameServerTabPropsI,
+  RegenerateWorldCardPropsI,
   GameServerCardItemI,
   GameModsListT,
   GameModT,

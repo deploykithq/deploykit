@@ -23,9 +23,9 @@ const TABS: { id: GameServerTabT; label: string; icon: React.ElementType }[] = [
 ];
 
 /** Statuses the worker moves out of by itself: the page polls through them. */
-const TRANSITIONAL_STATUSES = ["provisioning", "restoring"];
+const TRANSITIONAL_STATUSES = ["provisioning", "restoring", "regenerating"];
 
-/** Polling while the server is provisioning / restoring. */
+/** Polling while the server is provisioning / restoring / regenerating. */
 const STATUS_POLL_MS = 3000;
 
 /** Polling of the backup list while a backup is queued or running. */
@@ -88,6 +88,7 @@ const BACKUP_TRIGGER_LABELS: Record<string, string> = {
   schedule: "Scheduled",
   "pre-restore": "Before restore",
   "pre-mods": "Before mod change",
+  "pre-regenerate": "Before world regeneration",
 };
 
 const MOD_SOURCE_LABELS: Record<string, string> = {

@@ -235,6 +235,35 @@ const gameConfigFileSchema = z.object({
   language: z.enum(["properties", "yaml", "json", "ini", "text"]).default("text"),
 });
 
+/**
+ * What "the world" is, so it can be thrown away and generated again without
+ * touching mods, configs or anything else on the volume.
+ */
+const gameWorldSchema = z.object({
+  volume: z.string().regex(GAME_SLUG_REGEX),
+  /**
+   * Paths on that volume that make up the world. A directory is emptied
+   * (kept, with its owner), a file removed; the game generates a new world on
+   * its next start. Never "." — a volume also holds mods and configs.
+   */
+  paths: z
+    .array(
+      z
+        .string()
+        .min(1)
+        .max(255)
+        .regex(RELATIVE_PATH_REGEX, "Invalid world path")
+        .refine((p) => p !== "." && !p.split("/").includes(".."), "Not '.', no '..'"),
+    )
+    .min(1)
+    .max(10),
+  /**
+   * Variables that only act when a world is created (seed, size): the user
+   * may set them again when regenerating, even if they are not `editable`.
+   */
+  variables: z.array(z.string().regex(VARIABLE_NAME_REGEX)).max(10).default([]),
+});
+
 /** Every `${name}` (or `${name:arg}`) in a string. */
 const referencesIn = (value: string): Array<{ name: string; arg?: string }> =>
   [...value.matchAll(new RegExp(TEMPLATE_VARIABLE_SOURCE, "g"))].map((m) => ({
@@ -300,6 +329,8 @@ const gameSpecBaseSchema = gameMetaSchema
     notes: z.string().max(2_000).optional(),
     /** Where mods come from and how the image receives them. */
     mods: gameModsSchema.optional(),
+    /** What "Regenerate world" deletes; absent = the game cannot regenerate. */
+    world: gameWorldSchema.optional(),
   });
 
 const gameSpecSchema = gameSpecBaseSchema
@@ -368,6 +399,19 @@ const gameSpecSchema = gameSpecBaseSchema
         issue(["configFiles", i, "volume"], `Unknown volume "${f.volume}"`);
       }
     });
+    if (spec.world) {
+      if (!volumeNames.has(spec.world.volume)) {
+        issue(["world", "volume"], `Unknown volume "${spec.world.volume}"`);
+      }
+      spec.world.variables.forEach((key, i) => {
+        const v = spec.variables.find((x) => x.key === key);
+        if (!v) issue(["world", "variables", i], `"${key}" is not a declared variable`);
+        else if (v.secret) issue(["world", "variables", i], `"${key}" is a secret`);
+      });
+      if (new Set(spec.world.variables).size !== spec.world.variables.length) {
+        issue(["world", "variables"], "Duplicate variable");
+      }
+    }
 
     if (spec.console.method === "rcon") {
       const pw = spec.variables.find((v) => v.key === (spec.console as any).passwordVar);
@@ -596,6 +640,12 @@ const gameBackupConfigSchema = z.object({
   backupRetention: z.number().int().min(1).max(100),
 });
 
+/** Throw the world away; `values` may set the world's creation variables again. */
+const regenerateWorldSchema = z.object({
+  id: z.string().uuid(),
+  values: gameValuesSchema.default({}),
+});
+
 const gameConsoleCommandSchema = z.object({
   id: z.string().uuid(),
   command: z
@@ -717,11 +767,29 @@ const validateGameValues = (
   return { values, toGenerate, errors };
 };
 
+/**
+ * Validate the values given to "Regenerate world": only the world's own
+ * variables, validated like an update in which they are editable. Shared by
+ * the form and the API.
+ */
+const validateWorldValues = (
+  spec: Pick<GameSpecT, "variables" | "world">,
+  input: Record<string, GameValueT | null | undefined>,
+  current: Record<string, string> = {},
+): GameValuesResultI => {
+  const keys = new Set(spec.world?.variables ?? []);
+  const variables = spec.variables
+    .filter((v) => keys.has(v.key))
+    .map((v) => ({ ...v, editable: true }));
+  return validateGameValues({ variables }, input, "update", current);
+};
+
 type GameMetaT = z.infer<typeof gameMetaSchema>;
 type GamePortT = z.infer<typeof gamePortSchema>;
 type GameVolumeT = z.infer<typeof gameVolumeSchema>;
 type GameConsoleT = z.infer<typeof gameConsoleSchema>;
 type GameConfigFileT = z.infer<typeof gameConfigFileSchema>;
+type GameWorldT = z.infer<typeof gameWorldSchema>;
 type CreateGameServerInputT = z.infer<typeof createGameServerSchema>;
 type UpdateGameServerInputT = z.infer<typeof updateGameServerSchema>;
 
@@ -751,12 +819,16 @@ export {
   gameBackupConfigSchema,
   gameConsoleCommandSchema,
   validateGameValues,
+  validateWorldValues,
+  gameWorldSchema,
+  regenerateWorldSchema,
   type GameMetaT,
   type GamePortT,
   type GameVariableT,
   type GameVolumeT,
   type GameConsoleT,
   type GameConfigFileT,
+  type GameWorldT,
   type GameSpecT,
   type GameValueT,
   type GameValuesResultI,

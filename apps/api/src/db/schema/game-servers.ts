@@ -57,7 +57,7 @@ const gameServers = pgTable("game_servers", {
   memoryMb: integer("memory_mb").notNull(),
   cpuMillicores: integer("cpu_millicores"),
   containerId: varchar("container_id", { length: 100 }),
-  // idle | provisioning | running | stopped | restoring | error
+  // idle | provisioning | running | stopped | restoring | regenerating | error
   status: varchar("status", { length: 20 }).default("idle").notNull(),
   // Why the last provisioning / restore failed, shown next to the status.
   statusMessage: text("status_message"),

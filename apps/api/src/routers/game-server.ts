@@ -8,6 +8,7 @@ import {
   createGameServerSchema,
   gameBackupConfigSchema,
   gameConsoleCommandSchema,
+  regenerateWorldSchema,
   updateGameServerSchema,
 } from "@deploykit/shared";
 
@@ -36,7 +37,9 @@ import {
   renamePath,
   writeFile,
 } from "../services/game-files";
+import { checkWorldValues, worldFor, worldInfo } from "../services/game-world";
 import {
+  allValues,
   connectInfo,
   createGameServer,
   gameBackupDir,
@@ -44,6 +47,7 @@ import {
   readSecrets,
   removeGameServer,
   restartGameServer,
+  setGameServerStatus,
   startGameServer,
   stopGameServer,
   updateGameServer,
@@ -101,6 +105,9 @@ const fileTarget = z.object({
   volume: z.string().min(1).max(32),
   path: z.string().max(1024),
 });
+
+/** A server in one of these is already being changed by a queued job. */
+const BUSY_STATUSES = new Set(["provisioning", "restoring", "regenerating"]);
 
 export const gameServerRouter = router({
   mods: gameServerModsRouter,
@@ -356,6 +363,90 @@ export const gameServerRouter = router({
       }),
   }),
 
+  world: router({
+    info: protectedProcedure
+      .input(z.object({ id: z.string().uuid() }))
+      .query(async ({ ctx, input }) => {
+        const { row, role } = await resolveServer(ctx, input.id, "view");
+        // Regenerating needs the global operator role as well (operatorProcedure).
+        const canEdit = canOperate(role) && ctx.user.role !== "viewer";
+        return { ...(await worldInfo(row)), canEdit };
+      }),
+
+    /**
+     * Delete the world so the game generates a new one, keeping mods and
+     * configs. As destructive as a restore, so the same bar: global operator
+     * AND project `canOperate`, and a safety backup that cannot be skipped.
+     */
+    regenerate: operatorProcedure
+      .input(regenerateWorldSchema)
+      .mutation(async ({ ctx, input }) => {
+        const { row } = await resolveServer(ctx, input.id, "operate");
+        if (BUSY_STATUSES.has(row.status)) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `The server is ${row.status}; try again when it is done`,
+          });
+        }
+        const world = await worldFor(row);
+        if (!world) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "This game does not declare where its world lives, so it cannot be regenerated",
+          });
+        }
+        const values = await guarded(async () =>
+          checkWorldValues(row.spec, world, input.values, allValues(row)),
+        );
+        const audit = {
+          action: "game_server.world_regenerate" as const,
+          resourceType: "game_server" as const,
+          resourceId: row.id,
+          resourceName: row.name,
+          metadata: { keys: Object.keys(values) },
+        };
+
+        // Never provisioned: there is no world yet, and the first start
+        // creates it with these values.
+        if (!row.containerId) {
+          await ctx.db
+            .update(gameServers)
+            .set({ config: { ...row.config, ...values }, updatedAt: new Date() })
+            .where(eq(gameServers.id, row.id));
+          await logAction(ctx, audit);
+          return { queued: false, appliesOnStart: true };
+        }
+
+        // One queue, concurrency 1: the safety backup finishes first, and the
+        // job refuses to delete anything unless it worked.
+        const [safety] = await ctx.db
+          .insert(gameServerBackups)
+          .values({
+            gameServerId: row.id,
+            filename: "",
+            status: "queued",
+            trigger: "pre-regenerate",
+            triggeredBy: ctx.user.id,
+          })
+          .returning();
+        await setGameServerStatus(row.id, "regenerating");
+        await gameBackupQueue.add("backup", {
+          gameServerId: row.id,
+          backupId: safety!.id,
+          trigger: "pre-regenerate",
+          userId: ctx.user.id,
+        });
+        await gameBackupQueue.add("regenerate-world", {
+          gameServerId: row.id,
+          backupId: safety!.id,
+          values,
+        });
+
+        await logAction(ctx, audit);
+        return { queued: true, appliesOnStart: false };
+      }),
+  }),
+
   backups: router({
     list: protectedProcedure
       .input(z.object({ id: z.string().uuid() }))
@@ -420,6 +511,9 @@ export const gameServerRouter = router({
         }
         if (row.status === "restoring") {
           throw new TRPCError({ code: "CONFLICT", message: "A restore is already running" });
+        }
+        if (row.status === "regenerating") {
+          throw new TRPCError({ code: "CONFLICT", message: "The world is being regenerated" });
         }
 
         // One queue, concurrency 1: the safety backup finishes before the
