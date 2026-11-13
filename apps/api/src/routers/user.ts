@@ -4,20 +4,21 @@ import { eq } from "drizzle-orm";
 
 import { users } from "../db/schema/index";
 
-import { router, adminProcedure } from "../trpc";
+import { router, adminSessionProcedure } from "../trpc";
 import { logAction } from "../lib/audit/audit";
 
 import { createUserSchema, updateUserRoleSchema } from "@deploykit/shared";
 
+// Session only: an API token never manages users, whatever its owner's role.
 export const userRouter = router({
-  list: adminProcedure.query(async ({ ctx }) => {
+  list: adminSessionProcedure.query(async ({ ctx }) => {
     const result = await ctx.db.query.users.findMany({
       orderBy: (u, { desc }) => [desc(u.createdAt)],
     });
     return result.map(({ password, ...user }) => user);
   }),
 
-  create: adminProcedure
+  create: adminSessionProcedure
     .input(createUserSchema)
     .mutation(async ({ ctx, input }) => {
       const existing = await ctx.db.query.users.findFirst({
@@ -43,7 +44,7 @@ export const userRouter = router({
       return rest;
     }),
 
-  updateRole: adminProcedure
+  updateRole: adminSessionProcedure
     .input(updateUserRoleSchema)
     .mutation(async ({ ctx, input }) => {
       if (input.id === ctx.user.id) {
@@ -69,7 +70,7 @@ export const userRouter = router({
       return rest;
     }),
 
-  resetPassword: adminProcedure
+  resetPassword: adminSessionProcedure
     .input(z.object({ id: z.string().uuid(), newPassword: z.string().min(8) }))
     .mutation(async ({ ctx, input }) => {
       if (input.id === ctx.user.id) {
@@ -98,7 +99,7 @@ export const userRouter = router({
       return { success: true };
     }),
 
-  delete: adminProcedure
+  delete: adminSessionProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       if (input.id === ctx.user.id) {

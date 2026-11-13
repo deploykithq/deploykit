@@ -63,6 +63,9 @@ const authorize = async (
 ): Promise<{ ctx: Context & { user: NonNullable<Context["user"]> }; row: GameServerT }> => {
   const ctx = await createContext(req);
   if (!ctx.user) throw new HttpError(401, "Unauthorized");
+  // File transfer is outside what an API token is for: an upload is code,
+  // and a download bypasses the `read` scope check tRPC procedures get.
+  if (ctx.apiToken) throw new HttpError(403, "Not available to API tokens");
   if (!UUID_RE.test(id)) throw new HttpError(404, "Game server not found");
 
   const role = await getProjectRoleByGameServerId(ctx.user, id);

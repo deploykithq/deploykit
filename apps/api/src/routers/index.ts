@@ -18,11 +18,13 @@ import { dashboardRouter } from "./dashboard";
 import { applicationRouter } from "./application";
 import { gameServerRouter } from "./game-server";
 import { settingsRouter } from "./settings";
+import { apiTokenRouter } from "./api-token";
 import { notificationRouter } from "./notification";
 import { projectMemberRouter } from "./project-member";
 
 export const appRouter = router({
   auth: authRouter,
+  apiToken: apiTokenRouter,
   project: projectRouter,
   application: applicationRouter,
   database: databaseRouter,

@@ -17,7 +17,7 @@ A self-hosted PaaS (open-source Vercel/Heroku alternative) for deploying applica
 ### Backend structure (`apps/api/src/`)
 
 - **`index.ts`** — Server entry: Fastify setup, CORS, security headers, rate limiting, tRPC adapter, Socket.IO, webhook routes, worker startup
-- **`trpc.ts`** — tRPC context (db, user, ip) and middleware: `publicProcedure`, `protectedProcedure`, `adminProcedure`, `operatorProcedure`
+- **`trpc.ts`** — tRPC context (db, user, ip, apiToken) and middleware: `publicProcedure`, `protectedProcedure`, `adminProcedure`, `operatorProcedure`, `sessionProcedure`, `adminSessionProcedure`
 - **`routers/`** — tRPC routers (auth, project, application, database, compose, template, server, user, audit, metrics, notification, dashboard, projectMember)
 - **`db/schema/`** — Drizzle table definitions with relations
 - **`services/`** — Business logic: build orchestration (Nixpacks/Dockerfile/Buildpacks), Docker operations, SSH, git, webhook processing, log streaming, metrics collection, notifications
@@ -68,6 +68,28 @@ reviewing a router procedure, the checklist is: (1) correct procedure builder, (
 resolved and rejected on `null`, (3) right level (`canOperate`/`isAdmin`/`canViewSecrets`),
 (4) secrets never returned to non-`canViewSecrets` callers, (5) the same applies to queries,
 not just mutations.
+
+### API tokens
+
+A Bearer starting with `dk_` is an **API token** (`api_tokens`, `lib/api-tokens.ts`),
+the credential for non-browser clients such as the MCP server. `createContext`
+resolves it by its SHA-256 — the only form stored — and sets `ctx.apiToken`.
+
+- **A token acts as its user.** Both authorization layers above apply unchanged;
+  a token can only narrow them. Never add a permission that a token has and its
+  user does not.
+- **`scope: "read"` may only call queries.** The three authenticated procedure
+  builders enforce it, so no router has to. Configuration exports are mutations,
+  so a read token cannot export either.
+- **Account management needs a session.** `sessionProcedure` /
+  `adminSessionProcedure` reject every token: `auth.changePassword`,
+  `auth.updateProfile`, `apiToken.*` and `user.*`. Use them for any new
+  procedure that manages credentials or accounts — with `protectedProcedure`, a
+  leaked token could mint more tokens or lock its owner out.
+- Socket.IO verifies JWTs on its own, so a token opens no rooms and no
+  terminal; `routes/game-files.ts` rejects tokens explicitly.
+- `logAction` records `metadata.apiToken` (`id`, `name`) for anything done with
+  a token.
 
 ### Compose stacks & templates
 

@@ -9,9 +9,14 @@ import { LogActionOptsI } from "./audit.interfaces";
  * block the actual operation.
  */
 export const logAction = async (
-  ctx: Pick<Context, "db" | "user" | "ip">,
+  ctx: Pick<Context, "db" | "user" | "ip"> & Partial<Pick<Context, "apiToken">>,
   opts: LogActionOptsI,
 ): Promise<void> => {
+  // An action taken with an API token records which one, so an agent's
+  // actions can be told apart from its user's own.
+  const metadata = ctx.apiToken
+    ? { ...opts.metadata, apiToken: { id: ctx.apiToken.id, name: ctx.apiToken.name } }
+    : opts.metadata;
   try {
     await ctx.db.insert(auditLogs).values({
       userId: ctx.user?.id ?? null,
@@ -20,7 +25,7 @@ export const logAction = async (
       resourceType: opts.resourceType ?? null,
       resourceId: opts.resourceId ?? null,
       resourceName: opts.resourceName ?? null,
-      metadata: opts.metadata ?? null,
+      metadata: metadata ?? null,
       ip: ctx.ip,
     });
   } catch (err) {

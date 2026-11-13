@@ -3,7 +3,12 @@ import { eq } from "drizzle-orm";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 
-import { router, publicProcedure, protectedProcedure } from "../trpc";
+import {
+  router,
+  publicProcedure,
+  protectedProcedure,
+  sessionProcedure,
+} from "../trpc";
 
 import { users } from "../db/schema/index";
 
@@ -127,7 +132,8 @@ export const authRouter = router({
       return { success: true };
     }),
 
-  changePassword: protectedProcedure
+  // Session only: an API token must not be able to lock its owner out.
+  changePassword: sessionProcedure
     .input(
       z.object({
         currentPassword: z.string(),
@@ -153,7 +159,7 @@ export const authRouter = router({
       return { success: true };
     }),
 
-  updateProfile: protectedProcedure
+  updateProfile: sessionProcedure
     .input(z.object({ email: z.string().email() }))
     .mutation(async ({ ctx, input }) => {
       const existing = await ctx.db.query.users.findFirst({
