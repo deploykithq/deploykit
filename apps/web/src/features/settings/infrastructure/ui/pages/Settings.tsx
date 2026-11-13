@@ -5,6 +5,7 @@ import {
   GitHubAppSection,
   GameModsSection,
   InfoSection,
+  ApiTokensSection,
 } from "@settings/infrastructure/ui/components";
 
 import { useAuthStore } from "@lib/auth";
@@ -24,6 +25,9 @@ export const SettingsPage: React.FC = () => {
       <div className="grid gap-6 grid-cols-1 md:grid-cols-2 max-w-6xl">
         <ProfileSection />
         <PasswordSection />
+        <div className="col-span-1 md:col-span-2">
+          <ApiTokensSection />
+        </div>
         {isAdmin && (
           <div className="col-span-1 md:col-span-2">
             <GitHubAppSection />

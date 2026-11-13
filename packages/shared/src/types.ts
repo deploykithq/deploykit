@@ -212,6 +212,18 @@ export const updateUserRoleSchema = z.object({
   role: UserRole,
 });
 
+// API tokens
+
+export const ApiTokenScope = z.enum(["read", "write"]);
+export type ApiTokenScope = z.infer<typeof ApiTokenScope>;
+
+export const createApiTokenSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  scope: ApiTokenScope.default("read"),
+  // Days until the token stops working; null means it never expires.
+  expiresInDays: z.number().int().min(1).max(365).nullable().default(null),
+});
+
 // Docker image defaults
 
 export const DATABASE_IMAGES: Record<

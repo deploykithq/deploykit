@@ -100,7 +100,10 @@ type AuditActionT =
   | "game_server.mods_apply"
   | "game_server.world_regenerate"
   | "game_server.image_update"
-  | "settings.update";
+  | "settings.update"
+  // API tokens
+  | "api_token.create"
+  | "api_token.revoke";
 
 type ResourceTypeT =
   | "project"
@@ -114,6 +117,7 @@ type ResourceTypeT =
   | "task"
   | "github_app"
   | "game_server"
-  | "settings";
+  | "settings"
+  | "api_token";
 
 export type { AuditActionT, ResourceTypeT };

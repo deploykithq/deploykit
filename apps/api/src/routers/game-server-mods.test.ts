@@ -45,6 +45,7 @@ const caller = (role: string) => {
   return gameServerModsRouter.createCaller({
     db: {} as any,
     ip: "t",
+    apiToken: null,
     user: { id: "u1", role: "operator" } as any,
   });
 };
