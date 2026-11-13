@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/deploykithq/deploykit/compare/v0.7.4...v0.8.0) (2026-11-13)
+
+
+### Features
+
+* added api tokens to connect with mcp ([#36](https://github.com/deploykithq/deploykit/issues/36)) ([fb743bf](https://github.com/deploykithq/deploykit/commit/fb743bfa48ea4278120c9f2abae56bc38e78c3ba))
+
 ## [0.7.4](https://github.com/deploykithq/deploykit/compare/v0.7.3...v0.7.4) (2026-11-07)
 
 
